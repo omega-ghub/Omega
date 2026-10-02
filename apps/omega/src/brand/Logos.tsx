@@ -2,9 +2,9 @@
 //
 // * OmegaMark: the red Ω cutout on a transparent background (dashboard brand).
 // * OmegaTile: the red square with the white Ω (window corner logo, OS icon).
-// * AppMark:   each app built like the Omega tile: a flat square in the app's
-//              color with its Greek-letter rune in white, matching the Ω's
-//              footprint and weight. Straight strokes, no font dependency.
+// * AppMark:   each app built like the Omega tile: a flat, square-cornered
+//              tile in the app's color with its uppercase Greek-letter rune in
+//              white, matching the Ω's footprint and stroke weights.
 // * AppTitle:  the app name with one formal line saying what it is for.
 
 import { useId } from 'react';
@@ -41,7 +41,7 @@ export function OmegaMark({ size = 32, className, title = 'Omega', color = '#FF0
 }
 
 /** The red square with the white Ω — the window corner logo. */
-export function OmegaTile({ size = 32, rounded = true, className, title = 'Omega' }: MarkProps) {
+export function OmegaTile({ size = 32, rounded = false, className, title = 'Omega' }: MarkProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 1932 1932" className={className} role="img" aria-label={title}>
       <rect width="1932" height="1932" rx={rounded ? 174 : 0} fill="#FF0000" />
@@ -54,7 +54,7 @@ export function OmegaTile({ size = 32, rounded = true, className, title = 'Omega
  * App marks, built exactly like the Omega tile: a flat square in the app's
  * color with its rune in white, the same footprint and stroke weight as the Ω.
  */
-export function AppMark({ app, size = 32, rounded = true, className }: MarkProps & { app: AppKind }) {
+export function AppMark({ app, size = 32, rounded = false, className }: MarkProps & { app: AppKind }) {
   if (app === 'omega') return <OmegaTile size={size} rounded={rounded} className={className} />;
   const t = THEMES[app];
   return (
@@ -77,112 +77,113 @@ export function AppRune({ app, size = 24, color, className }: { app: AppKind; si
 }
 
 /**
- * Rune weights and footprint come straight from the Ω in the Omega tile
- * (1932-unit artwork scaled to 1000): the Ω fills the square 256–744, its
- * ring is 294/1932 = 152 units thick and its feet are 192/1932 = 99 units.
- * Main strokes use the ring weight, secondary strokes the foot weight, and
- * everything is clipped to the Ω's square so ends are cut flat like its feet.
+ * Rune geometry is the shipping icon set, drawn on a 128-unit tile where the
+ * Ω fills the square 32–96 (ring 19 units thick, feet 12 units). Main strokes
+ * use the ring weight (19), secondary strokes the foot weight (12). Every
+ * rune is clipped to the Ω's square, and corners are sharp unless the letter
+ * itself is round. The 128-unit artwork is mapped onto the 1000-unit tile
+ * (square 256–744) with a scale of 7.625.
  */
-const MAIN = 152;
-const THIN = 99;
+const ICON_TO_TILE = 'matrix(7.625 0 0 7.625 12 12)';
 
 function Rune({ app, color }: { app: AppKind; color: string }) {
   const clip = `rune-box-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
-  const s = { fill: 'none', stroke: color, strokeLinejoin: 'miter' as const, strokeLinecap: 'butt' as const, strokeMiterlimit: 2.2 };
-  const main = { ...s, strokeWidth: MAIN };
-  const thin = { ...s, strokeWidth: THIN };
   let body: React.ReactNode = null;
   switch (app) {
-    case 'video':
-      // Δ Delta — a sharp carved triangle, walls at the Ω's foot weight
-      body = <path fill={color} fillRule="evenodd" d="M500 256 L744 744 H256 Z M500 477 L584 645 H416 Z" />;
-      break;
-    case 'image':
-      // Φ Phi — a heavy stave through a thin carved ring
+    case 'three':
+      // Θ Theta
       body = (
         <>
-          <path {...thin} d="M410 356 H590 L694 440 V560 L590 644 H410 L306 560 V440 Z" />
-          <path {...main} d="M500 200 V800" />
-        </>
-      );
-      break;
-    case 'photo':
-      // Γ Gamma — heavy stave, thin beam
-      body = (
-        <>
-          <path {...main} d="M332 800 V200" />
-          <path {...thin} d="M256 305.5 H800" />
+          <circle cx="64" cy="64" r="26" fill="none" stroke={color} strokeWidth="12"/>
+          <rect x="40" y="54.5" width="48" height="19"/>
         </>
       );
       break;
     case 'vector':
-      // Κ Kappa — heavy stave, thin arms
+      // Κ Kappa
       body = (
         <>
-          <path {...main} d="M332 200 V800" />
-          <path {...thin} d="M820 200 L420 500 L820 800" />
-        </>
-      );
-      break;
-    case 'audio':
-      // λ Lambda — thin hook, heavy long stave, thin leg
-      body = (
-        <>
-          <path {...thin} d="M200 305.5 H420" />
-          <path {...main} d="M350 230 L760 800" />
-          <path {...thin} d="M560 520 L280 820" />
+          <rect x="32" y="32" width="19" height="64"/>
+          <polyline points="44,74 84,22" fill="none" stroke={color} strokeWidth="19"/>
+          <polyline points="60,56 98,104" fill="none" stroke={color} strokeWidth="19"/>
         </>
       );
       break;
     case 'motion':
-      // τ Tau — thin beam, heavy stave, foot kicking right
+      // Τ Tau
       body = (
         <>
-          <path {...thin} d="M200 305.5 H800" />
-          <path {...main} d="M470 256 V744" />
-          <path {...thin} d="M500 694.5 H744" />
-        </>
-      );
-      break;
-    case 'three':
-      // Θ Theta — thin carved ring, heavy bar
-      body = (
-        <>
-          <path {...thin} d="M410 305.5 H590 L694.5 410 V590 L590 694.5 H410 L305.5 590 V410 Z" />
-          <path {...main} d="M300 500 H700" />
+          <rect x="32" y="32" width="64" height="19"/>
+          <rect x="54.5" y="32" width="19" height="64"/>
         </>
       );
       break;
     case 'web':
-      // Ξ Xi — thin outer beams, heavy middle beam
+      // Ξ Xi
       body = (
         <>
-          <path {...thin} d="M200 305.5 H800" />
-          <path {...main} d="M330 500 H670" />
-          <path {...thin} d="M200 694.5 H800" />
+          <rect x="36" y="32" width="56" height="19"/>
+          <rect x="44" y="58.0" width="40" height="12"/>
+          <rect x="32" y="77" width="64" height="19"/>
+        </>
+      );
+      break;
+    case 'photo':
+      // Γ Gamma
+      body = (
+        <>
+          <rect x="32" y="32" width="19" height="64"/>
+          <rect x="32" y="32" width="58" height="19"/>
+        </>
+      );
+      break;
+    case 'image':
+      // Φ Phi
+      body = (
+        <>
+          <ellipse cx="64" cy="64" rx="26" ry="17" fill="none" stroke={color} strokeWidth="12"/>
+          <rect x="54.5" y="32" width="19" height="64"/>
         </>
       );
       break;
     case 'publish':
-      // Σ Sigma — thin beams, heavy fold
+      // Σ Sigma
       body = (
         <>
-          <path {...thin} d="M256 305.5 H800" />
-          <path {...thin} d="M256 694.5 H800" />
-          <path {...main} strokeMiterlimit={1.6} d="M300 290 L548 500 L300 710" />
+          <rect x="32" y="32" width="64" height="12"/>
+          <rect x="32" y="84" width="64" height="12"/>
+          <polyline points="30,30 66,64 30,98" fill="none" stroke={color} strokeWidth="19" strokeLinejoin="miter" strokeMiterlimit="10"/>
+        </>
+      );
+      break;
+    case 'video':
+      // Δ Delta
+      body = (
+        <>
+          <path fillRule="evenodd" d="M64.00,32.00 L96.00,96.00 L32.00,96.00 Z M60.09,66.66 L51.42,84.00 L68.76,84.00 Z"/>
+        </>
+      );
+      break;
+    case 'audio':
+      // Λ Lambda
+      body = (
+        <>
+          <path d="M64.00,32.00 L96.00,96.00 L74.76,96.00 L60.09,66.66 L45.42,96.00 L32.00,96.00 Z"/>
         </>
       );
       break;
   }
   return (
-    <>
+    <g transform={ICON_TO_TILE}>
       <defs>
         <clipPath id={clip}>
-          <rect x="256" y="256" width="488" height="488" />
+          <rect x="32" y="32" width="64" height="64" />
         </clipPath>
       </defs>
-      <g clipPath={`url(#${clip})`}>{body}</g>
-    </>
+      <g fill={color} clipPath={`url(#${clip})`}>
+        {body}
+      </g>
+    </g>
   );
 }
 

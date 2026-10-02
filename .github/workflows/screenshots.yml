@@ -1,0 +1,50 @@
+name: Screenshots
+
+# Launches the real app under a virtual display, tours the hub and every Delta
+# workspace with generated test media, and commits the PNGs to
+# docs/screenshots/latest on the branch it ran on. Run it from the Actions tab,
+# or push a commit whose message contains [screenshots].
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**', main]
+
+permissions:
+  contents: write
+
+jobs:
+  screenshots:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[screenshots]')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/omega
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/omega/package-lock.json
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+      - run: npm ci
+      - run: npm run build
+      - run: npm run build:modules
+      - name: Generate test media
+        run: CHROMIUM_PATH="$(command -v google-chrome || command -v chromium)" CINEMA=1 node scripts/make-test-media.mjs "$RUNNER_TEMP/media"
+      - name: Tour the app
+        run: |
+          media=$(find "$RUNNER_TEMP/media" -maxdepth 1 -type f \( -name '*.mp4' -o -name '*.webm' -o -name '*.wav' -o -name '*.m4a' -o -name '*.ogg' -o -name '*.png' \) | sort | paste -sd: -)
+          echo "media: $media"
+          OMEGA_SMOKE_MEDIA="$media" xvfb-run -a -s "-screen 0 1600x960x24" node scripts/screenshots.mjs "$RUNNER_TEMP/shots"
+      - name: Commit screenshots
+        run: |
+          dest=../../docs/screenshots/latest
+          rm -rf "$dest" && mkdir -p "$dest"
+          cp "$RUNNER_TEMP"/shots/*.png "$dest"/
+          cd ../..
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots/latest
+          git commit -m "Update screenshots [skip ci]" || exit 0
+          git push
