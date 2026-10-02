@@ -3,7 +3,7 @@ import { AppMark, OmegaMark } from '../brand/Logos';
 import { THEMES, WORKSPACE_ORDER, type AppKind } from '../brand/themes';
 import { useStore, type DashboardTab } from '../state/store';
 import { I } from '../ui/Icons';
-import { timeAgo } from '../ui/format';
+import { formatBytes, timeAgo } from '../ui/format';
 import { SHORTCUTS } from '../workspaces/video/shortcuts';
 
 const NAV: { id: DashboardTab; label: string; icon: (p: { size?: number }) => ReactElement }[] = [
@@ -68,8 +68,8 @@ function greeting() {
 
 function HomeTab() {
   const recents = useStore((s) => s.recents);
-  const openNew = useStore((s) => s.openNewProject);
-  const openProject = useStore((s) => s.openProject);
+  const openNew = useStore((s) => s.startApp);
+  const openProject = useStore((s) => s.launchProject);
 
   return (
     <div className="page">
@@ -119,17 +119,26 @@ function HomeTab() {
 
 function CreateCard({ app, onClick }: { app: AppKind; onClick: () => void }) {
   const t = THEMES[app];
+  const installed = useStore((s) => !!s.installed[app]);
+  const entry = useStore((s) => s.catalog.find((m) => m.id === app));
+  const progress = useStore((s) => s.progress[app]);
+  let hint = t.phase;
+  if (t.available) {
+    if (progress !== undefined) hint = `Installing… ${Math.round(progress * 100)}%`;
+    else if (installed) hint = 'Start a project';
+    else hint = entry ? `Get it · ${formatBytes(entry.size)}` : 'Not available offline';
+  }
   return (
-    <button className="create-card" onClick={onClick} style={{ ['--card-accent' as string]: t.accent, ['--card-soft' as string]: t.accentSoft }}>
+    <button className="create-card" onClick={onClick} disabled={progress !== undefined} style={{ ['--card-accent' as string]: t.accent, ['--card-soft' as string]: t.accentSoft }}>
       <AppMark app={app} size={44} />
       <div className="create-card__name">{t.short}</div>
-      <div className="create-card__hint">{t.available ? 'Start a project' : t.phase}</div>
+      <div className="create-card__hint">{hint}</div>
     </button>
   );
 }
 
 function RecentCard({ r }: { r: { path: string; name: string; app: string; modifiedAt: number; summary: string } }) {
-  const openProject = useStore((s) => s.openProject);
+  const openProject = useStore((s) => s.launchProject);
   const removeRecent = useStore((s) => s.removeRecent);
   const app = (r.app in THEMES ? r.app : 'video') as AppKind;
   const t = THEMES[app];
@@ -159,29 +168,77 @@ function RecentCard({ r }: { r: { path: string; name: string; app: string; modif
 }
 
 function AppsTab() {
-  const openNew = useStore((s) => s.openNewProject);
+  const startApp = useStore((s) => s.startApp);
+  const catalog = useStore((s) => s.catalog);
+  const catalogError = useStore((s) => s.catalogError);
+  const installed = useStore((s) => s.installed);
+  const progress = useStore((s) => s.progress);
+  const installModule = useStore((s) => s.installModule);
+  const uninstallModule = useStore((s) => s.uninstallModule);
+  const refreshModules = useStore((s) => s.refreshModules);
   return (
     <div className="page">
       <h1 className="page__title">Apps</h1>
       <p className="page__sub">
-        Omega is one application. Each workspace below is a different editor over the same project file, so a 3D scene or an audio mix can live right on a video timeline.
+        Omega is a small hub. Each app is downloaded only when you want it, so you never carry the ones you don't use. Apps share one project format, so a project can use more than one.
       </p>
+      {catalogError && (
+        <div className="note">
+          {catalogError}{' '}
+          <button className="btn btn--small btn--ghost" onClick={() => refreshModules()}>
+            Retry
+          </button>
+        </div>
+      )}
       <div className="app-list">
         {WORKSPACE_ORDER.map((app) => {
           const t = THEMES[app];
+          const entry = catalog.find((m) => m.id === app);
+          const inst = installed[app];
+          const busy = progress[app] !== undefined;
+          const update = !!(inst && entry && entry.version !== inst.version);
+          const accent = { ['--accent' as string]: t.accent, ['--accent-deep' as string]: t.accentDeep };
           return (
             <div className="app-row" key={app}>
               <AppMark app={app} size={56} />
               <div className="app-row__text">
                 <div className="app-row__name">
-                  {t.name} {!t.available && <span className="pill">{t.phase}</span>}
-                  {t.available && <span className="pill pill--accent" style={{ ['--pill' as string]: t.accent }}>Preview</span>}
+                  {t.name}
+                  {!t.available && <span className="pill">{t.phase}</span>}
+                  {inst && <span className="pill pill--accent" style={{ ['--pill' as string]: t.accent }}>Installed · v{inst.version}</span>}
                 </div>
                 <div className="app-row__tag">{t.tagline}</div>
+                {busy && (
+                  <div className="progress app-row__progress">
+                    <div className="progress__bar">
+                      <div className="progress__fill" style={{ width: `${Math.round(progress[app] * 100)}%`, background: t.accent }} />
+                    </div>
+                  </div>
+                )}
               </div>
-              <button className="btn btn--accent" style={{ ['--accent' as string]: t.accent, ['--accent-deep' as string]: t.accentDeep }} onClick={() => openNew(app)}>
-                {t.available ? 'New project' : 'Preview'}
-              </button>
+              <div className="app-row__actions">
+                {!t.available && <span className="muted">Coming later</span>}
+                {t.available && !inst && (
+                  <button className="btn btn--accent" style={accent} disabled={busy || !entry} onClick={() => installModule(app)}>
+                    <I.Import size={16} /> {busy ? `${Math.round(progress[app] * 100)}%` : entry ? `Install · ${formatBytes(entry.size)}` : 'Unavailable'}
+                  </button>
+                )}
+                {t.available && inst && (
+                  <>
+                    {update && (
+                      <button className="btn btn--ghost" disabled={busy} onClick={() => installModule(app)}>
+                        Update to v{entry!.version}
+                      </button>
+                    )}
+                    <button className="btn btn--accent" style={accent} onClick={() => startApp(app)}>
+                      New project
+                    </button>
+                    <button className="btn btn--ghost" onClick={() => uninstallModule(app)} title="Remove this app. Projects are not deleted.">
+                      Uninstall
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           );
         })}
@@ -192,7 +249,7 @@ function AppsTab() {
 
 function ProjectsTab() {
   const recents = useStore((s) => s.recents);
-  const openProject = useStore((s) => s.openProject);
+  const openProject = useStore((s) => s.launchProject);
   const removeRecent = useStore((s) => s.removeRecent);
   return (
     <div className="page">

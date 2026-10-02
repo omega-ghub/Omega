@@ -15,14 +15,16 @@
     "dev": "node scripts/dev.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "npm run typecheck && vite build && node scripts/build-electron.mjs",
-    "start": "npm run build && electron .",
+    "start": "npm run build && npm run build:modules && electron .",
     "smoke": "node scripts/smoke.mjs",
-    "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist:linux": "npm run build && electron-builder --linux"
+    "dist": "npm run build && electron-builder --publish never",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "dist:linux": "npm run build && electron-builder --linux --publish never",
+    "build:modules": "tsc --noEmit -p tsconfig.json && vite build -c vite.module.config.ts && node scripts/package-modules.mjs"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "mediabunny": "^1.61.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

@@ -7,6 +7,7 @@ import { _electron as electron } from 'playwright-core';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { pathToFileURL } from 'node:url';
 
 const outDir = process.argv[2] ?? path.join(os.tmpdir(), 'omega-smoke');
 fs.mkdirSync(outDir, { recursive: true });
@@ -20,11 +21,13 @@ const app = await electron.launch({
   env: {
     ...process.env,
     OMEGA_SMOKE_EXPORT: exportPath,
+    // the hub downloads apps from a catalog; point it at the local build output
+    OMEGA_CATALOG_URL: pathToFileURL(path.resolve('dist-modules/catalog.json')).href,
     // isolate recents from the developer's real profile
     XDG_CONFIG_HOME: path.join(outDir, 'config'),
   },
 });
-const page = await app.firstWindow();
+let page = await app.firstWindow();
 page.on('console', (m) => {
   if (['error', 'warning'].includes(m.type())) console.log(`[renderer:${m.type()}] ${m.text()}`);
 });
@@ -48,6 +51,19 @@ for (const tab of ['Apps', 'Plans', 'Learn']) {
 }
 await page.getByRole('button', { name: 'Home', exact: true }).click();
 
+step('app is NOT installed yet: hub must not contain the Video app');
+await page.getByRole('button', { name: 'Apps', exact: true }).click();
+await page.waitForSelector('.app-row');
+await shot('01-apps-not-installed');
+const installBtn = page.getByRole('button', { name: /^Install/ });
+if ((await installBtn.count()) < 1) throw new Error('expected an Install button before installing');
+
+step('install Omega Video from the catalog');
+await installBtn.first().click();
+await page.getByText(/Installed · v/).waitFor({ timeout: 60_000 });
+await shot('01-apps-installed');
+await page.getByRole('button', { name: 'Home', exact: true }).click();
+
 step('new project dialog');
 await page.locator('.create-card').first().click();
 await page.waitForSelector('.newproj');
@@ -58,10 +74,19 @@ await shot('02-new-project-advanced');
 await page.getByText('Landscape').click();
 const nameInput = page.locator('.newproj input').first();
 await nameInput.fill('Smoke Test');
-await page.getByRole('button', { name: 'Create project' }).click();
 
-step('workspace');
-await page.waitForSelector('.ws');
+step('create project → Video app opens in its own window');
+const windowPromise = app.waitForEvent('window');
+await page.getByRole('button', { name: 'Create project' }).click();
+const hub = page;
+page = await windowPromise;
+page.on('console', (m) => {
+  if (['error', 'warning'].includes(m.type())) console.log(`[module:${m.type()}] ${m.text()}`);
+});
+page.on('pageerror', (e) => console.log('[module pageerror]', e.message));
+await page.waitForSelector('.ws', { timeout: 30_000 });
+console.log('module url:', page.url());
+if (!page.url().startsWith('omega-module://video/')) throw new Error('workspace did not load from the installed module');
 await page.waitForTimeout(300);
 await shot('03-workspace-empty');
 
@@ -108,12 +133,17 @@ if (process.env.OMEGA_SMOKE_MEDIA) {
   await page.keyboard.press('Escape');
 }
 
-step('save + back to dashboard');
+step('save + close module window → hub lists the project');
 await page.keyboard.press('Control+s');
 await page.waitForTimeout(300);
 await page.locator('.ws__left .icon-btn').first().click();
-await page.waitForSelector('.recent-card');
-await shot('08-dashboard-recents');
+await hub.waitForSelector('.recent-card', { timeout: 15_000 });
+await hub.screenshot({ path: path.join(outDir, '08-dashboard-recents.png') });
+
+step('uninstall removes the app');
+await hub.getByRole('button', { name: 'Apps', exact: true }).click();
+await hub.getByRole('button', { name: 'Uninstall' }).click();
+await hub.getByRole('button', { name: /^Install/ }).waitFor();
 
 await app.close();
 console.log('\nSMOKE OK →', outDir);

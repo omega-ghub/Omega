@@ -54,3 +54,34 @@ jobs:
             apps/omega/release/*.dmg
             apps/omega/release/*.AppImage
             apps/omega/release/*.deb
+
+  # The workspaces ship separately from the hub: each is a small package the
+  # hub downloads on demand, described by catalog.json.
+  modules:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/omega
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/omega/package-lock.json
+      - run: npm ci
+      - run: npm run build:modules
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omega-apps
+          path: |
+            apps/omega/dist-modules/*.zip
+            apps/omega/dist-modules/catalog.json
+          if-no-files-found: error
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apps/omega/dist-modules/*.zip
+            apps/omega/dist-modules/catalog.json

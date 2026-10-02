@@ -27,9 +27,24 @@ export interface AppInfo {
   customTitleBar: boolean;
 }
 
-export interface ExportTarget {
-  path: string;
+export interface CatalogModule {
+  id: string;
+  name: string;
+  version: string;
+  size: number; // bytes, compressed download
+  sha256: string;
+  url: string; // relative to the catalog, or absolute
+  description?: string;
 }
+
+export interface CatalogResult {
+  ok: boolean;
+  source: string;
+  modules: CatalogModule[];
+  error?: string;
+}
+
+export type InstalledMap = Record<string, { version: string }>;
 
 export interface OmegaApi {
   appInfo(): Promise<AppInfo>;
@@ -53,6 +68,15 @@ export interface OmegaApi {
     recents(): Promise<RecentProject[]>;
     addRecent(entry: RecentProject): Promise<void>;
     removeRecent(path: string): Promise<void>;
+    onChanged(cb: () => void): () => void;
+  };
+  modules: {
+    catalog(): Promise<CatalogResult>;
+    installed(): Promise<InstalledMap>;
+    install(id: string): Promise<void>;
+    uninstall(id: string): Promise<void>;
+    open(id: string, projectPath: string): Promise<void>;
+    onProgress(cb: (id: string, fraction: number) => void): () => void;
   };
   media: {
     urlFor(path: string): string;

@@ -31,6 +31,23 @@ const api: OmegaApi = {
     recents: () => ipcRenderer.invoke('recents:list'),
     addRecent: (entry: RecentProject) => ipcRenderer.invoke('recents:add', entry),
     removeRecent: (path) => ipcRenderer.invoke('recents:remove', path),
+    onChanged: (cb) => {
+      const listener = () => cb();
+      ipcRenderer.on('recents:changed', listener);
+      return () => ipcRenderer.removeListener('recents:changed', listener);
+    },
+  },
+  modules: {
+    catalog: () => ipcRenderer.invoke('modules:catalog'),
+    installed: () => ipcRenderer.invoke('modules:installed'),
+    install: (id) => ipcRenderer.invoke('modules:install', id),
+    uninstall: (id) => ipcRenderer.invoke('modules:uninstall', id),
+    open: (id, projectPath) => ipcRenderer.invoke('modules:open', id, projectPath),
+    onProgress: (cb) => {
+      const listener = (_e: unknown, id: string, f: number) => cb(id, f);
+      ipcRenderer.on('modules:progress', listener);
+      return () => ipcRenderer.removeListener('modules:progress', listener);
+    },
   },
   media: {
     urlFor: mediaUrl,

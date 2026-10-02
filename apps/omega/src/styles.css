@@ -1592,3 +1592,18 @@ input[type='range'] {
   font-weight: 700;
   letter-spacing: -0.02em;
 }
+
+/* app manager */
+.app-row__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.app-row__progress {
+  margin: 10px 0 0;
+  max-width: 420px;
+}
+.create-card:disabled {
+  opacity: 0.8;
+  cursor: progress;
+}

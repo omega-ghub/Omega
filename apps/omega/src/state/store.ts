@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import type { AppInfo, RecentProject } from '../../electron/api';
+import type { AppInfo, CatalogModule, InstalledMap, RecentProject } from '../../electron/api';
 import type { AppKind } from '../brand/themes';
-import { applyTheme } from '../brand/themes';
+import { THEMES, applyTheme } from '../brand/themes';
 import { probeMedia } from '../media/probe';
 import { isDropFrameRate } from './presets';
 import type { Clip, MediaAsset, Project, ProjectHandle, ProjectSettings, Sequence, Track, TrackKind } from './types';
@@ -20,6 +20,10 @@ interface OmegaState {
   recents: RecentProject[];
   toast: string | null;
   newProjectFor: AppKind | null;
+  catalog: CatalogModule[];
+  catalogError: string | null;
+  installed: InstalledMap;
+  progress: Record<string, number>;
 
   // project
   project: Project | null;
@@ -45,6 +49,12 @@ interface OmegaState {
   setDashboardTab(tab: DashboardTab): void;
   showToast(message: string | null): void;
   openNewProject(app: AppKind): void;
+  startApp(app: AppKind): Promise<void>;
+  launchProject(path?: string): Promise<void>;
+  refreshRecents(): Promise<void>;
+  refreshModules(): Promise<void>;
+  installModule(id: string): Promise<boolean>;
+  uninstallModule(id: string): Promise<void>;
   closeNewProject(): void;
   createProject(app: AppKind, name: string, location: string, settings: ProjectSettings): Promise<void>;
   openProject(path?: string): Promise<void>;
@@ -78,6 +88,10 @@ interface OmegaState {
   setTool(tool: Tool): void;
   setZoom(zoom: number): void;
   setExportOpen(open: boolean): void;
+}
+
+function cleanError(err: unknown): string {
+  return (err instanceof Error ? err.message : String(err)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 }
 
 function clone<T>(v: T): T {
@@ -134,6 +148,10 @@ export const useStore = create<OmegaState>((set, get) => ({
   recents: [],
   toast: null,
   newProjectFor: null,
+  catalog: [],
+  catalogError: null,
+  installed: {},
+  progress: {},
   project: null,
   handle: null,
   dirty: false,
@@ -154,6 +172,84 @@ export const useStore = create<OmegaState>((set, get) => ({
     const [appInfo, recents] = await Promise.all([window.omega.appInfo(), window.omega.projects.recents()]);
     set({ appInfo, recents });
     applyTheme('omega');
+    void get().refreshModules();
+  },
+
+  async refreshRecents() {
+    set({ recents: await window.omega.projects.recents() });
+  },
+
+  async refreshModules() {
+    const [cat, installed] = await Promise.all([window.omega.modules.catalog(), window.omega.modules.installed()]);
+    set({ catalog: cat.modules, catalogError: cat.ok ? null : (cat.error ?? 'The app catalog is unavailable.'), installed });
+  },
+
+  async installModule(id) {
+    set((s) => ({ progress: { ...s.progress, [id]: 0 } }));
+    const clear = () =>
+      set((s) => {
+        const { [id]: _drop, ...rest } = s.progress;
+        return { progress: rest };
+      });
+    try {
+      await window.omega.modules.install(id);
+    } catch (err) {
+      clear();
+      get().showToast(`Install failed: ${cleanError(err)}`);
+      return false;
+    }
+    await get().refreshModules();
+    clear();
+    get().showToast(`${THEMES[id as AppKind]?.name ?? id} is installed`);
+    return true;
+  },
+
+  async uninstallModule(id) {
+    await window.omega.modules.uninstall(id);
+    await get().refreshModules();
+    get().showToast(`${THEMES[id as AppKind]?.name ?? id} was removed. Your projects are untouched.`);
+  },
+
+  // Dashboard card: make sure the app is installed (downloading it if needed), then start a project.
+  async startApp(app) {
+    const theme = THEMES[app];
+    if (!theme.available) {
+      get().showToast(`${theme.name} is planned for ${theme.phase}.`);
+      return;
+    }
+    if (!get().installed[app]) {
+      if (!get().catalog.some((m) => m.id === app)) {
+        get().showToast(`${theme.name} can't be downloaded right now. Check the Apps page.`);
+        set({ dashboardTab: 'apps' });
+        return;
+      }
+      if (!(await get().installModule(app))) return;
+    }
+    set({ newProjectFor: app });
+  },
+
+  // Open an existing project file in the app that made it.
+  async launchProject(path) {
+    const filePath = path ?? (await window.omega.dialogs.pickProjectFile());
+    if (!filePath) return;
+    let app: string;
+    try {
+      app = JSON.parse(await window.omega.projects.load(filePath)).app;
+    } catch {
+      get().showToast('Could not read that project.');
+      await window.omega.projects.removeRecent(filePath);
+      return;
+    }
+    if (!get().installed[app]) {
+      get().showToast(`Install ${THEMES[app as AppKind]?.name ?? app} to open this project.`);
+      set({ dashboardTab: 'apps' });
+      return;
+    }
+    try {
+      await window.omega.modules.open(app, filePath);
+    } catch (err) {
+      get().showToast(cleanError(err));
+    }
   },
 
   setDashboardTab: (dashboardTab) => set({ dashboardTab }),
@@ -167,6 +263,7 @@ export const useStore = create<OmegaState>((set, get) => ({
   closeNewProject: () => set({ newProjectFor: null }),
 
   async createProject(app, name, location, settings) {
+    if (!get().installed[app]) throw new Error(`${THEMES[app].name} is not installed.`);
     const now = Date.now();
     const project: Project = {
       formatVersion: FORMAT_VERSION,
@@ -180,26 +277,13 @@ export const useStore = create<OmegaState>((set, get) => ({
       sequence: makeSequence(),
     };
     const handle = await window.omega.projects.create(location, name, JSON.stringify(project, null, 2));
-    const recent: RecentProject = { path: handle.filePath, name, app, modifiedAt: now, summary: summarize(project) };
-    await window.omega.projects.addRecent(recent);
-    const recents = await window.omega.projects.recents();
-    applyTheme(app);
-    set({
-      project,
-      handle,
-      recents,
-      dirty: false,
-      view: 'workspace',
-      newProjectFor: null,
-      playhead: 0,
-      playing: false,
-      inPoint: null,
-      outPoint: null,
-      selectedClipIds: [],
-      selectedAssetId: null,
-      undoStack: [],
-      redoStack: [],
-    });
+    await window.omega.projects.addRecent({ path: handle.filePath, name, app, modifiedAt: now, summary: summarize(project) });
+    set({ recents: await window.omega.projects.recents(), newProjectFor: null });
+    try {
+      await window.omega.modules.open(app, handle.filePath);
+    } catch (err) {
+      get().showToast(cleanError(err));
+    }
   },
 
   async openProject(path) {

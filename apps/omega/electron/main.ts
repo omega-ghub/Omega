@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import type { AppInfo, MediaFileInfo, RecentProject } from './api';
+import { installModule, listInstalled, loadCatalog, serveModule, uninstallModule } from './modules';
 
 // ---------------------------------------------------------------------------
 // Media streaming protocol
@@ -13,6 +14,10 @@ import type { AppInfo, MediaFileInfo, RecentProject } from './api';
 // Nothing is ever uploaded anywhere: this is purely local.
 
 protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'omega-module',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+  },
   {
     scheme: 'omega-media',
     privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, bypassCSP: true, corsEnabled: true },
@@ -146,7 +151,7 @@ function iconPath() {
   return candidates.find((p) => fs.existsSync(p));
 }
 
-function createWindow() {
+function createWindow(targetUrl?: string) {
   const icon = iconPath();
   const win = new BrowserWindow({
     width: 1440,
@@ -173,7 +178,9 @@ function createWindow() {
   win.on('maximize', () => win.webContents.send('window:maximized', true));
   win.on('unmaximize', () => win.webContents.send('window:maximized', false));
 
-  if (isDev) {
+  if (targetUrl) {
+    void win.loadURL(targetUrl);
+  } else if (isDev) {
     void win.loadURL(process.env.VITE_DEV_SERVER_URL!);
   } else {
     void win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
@@ -282,10 +289,21 @@ function registerIpc() {
     const list = (await readRecents()).filter((r) => r.path !== entry.path);
     list.unshift(entry);
     await writeRecents(list.slice(0, 30));
+    notifyRecentsChanged();
   });
   ipcMain.handle('recents:remove', async (_e, p: string) => {
     await writeRecents((await readRecents()).filter((r) => r.path !== p));
+    notifyRecentsChanged();
   });
+
+  // ---- apps (modules) ----
+  ipcMain.handle('modules:catalog', () => loadCatalog());
+  ipcMain.handle('modules:installed', () => listInstalled());
+  ipcMain.handle('modules:install', async (e, id: string) => {
+    await installModule(id, (f) => e.sender.send('modules:progress', id, f));
+  });
+  ipcMain.handle('modules:uninstall', (_e, id: string) => uninstallModule(id));
+  ipcMain.handle('modules:open', (_e, id: string, projectPath: string) => openModuleWindow(id, projectPath));
 
   ipcMain.handle('media:exists', async (_e, p: string) => {
     try {
@@ -303,6 +321,26 @@ function registerIpc() {
   ipcMain.on('file:showInFolder', (_e, p: string) => shell.showItemInFolder(p));
 }
 
+function notifyRecentsChanged() {
+  for (const w of BrowserWindow.getAllWindows()) w.webContents.send('recents:changed');
+}
+
+const moduleWindows = new Map<string, BrowserWindow>();
+
+function openModuleWindow(id: string, projectPath: string) {
+  if (!listInstalled()[id]) throw new Error(`This app is not installed yet. Install it from the Apps page.`);
+  const key = `${id}:${projectPath}`;
+  const existing = moduleWindows.get(key);
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore();
+    existing.focus();
+    return;
+  }
+  const win = createWindow(`omega-module://${id}/index.html?project=${encodeURIComponent(projectPath)}`);
+  moduleWindows.set(key, win);
+  win.on('closed', () => moduleWindows.delete(key));
+}
+
 // Crash-safe save: write to a temp file, then rename over the target.
 async function atomicWrite(filePath: string, contents: string) {
   const tmp = `${filePath}.tmp-${process.pid}`;
@@ -318,6 +356,7 @@ app.setName('Omega');
 
 app.whenReady().then(() => {
   protocol.handle('omega-media', serveMedia);
+  protocol.handle('omega-module', serveModule);
   registerIpc();
   createWindow();
   app.on('activate', () => {

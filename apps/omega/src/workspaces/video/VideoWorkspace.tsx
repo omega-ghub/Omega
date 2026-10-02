@@ -16,7 +16,6 @@ export function VideoWorkspace() {
   const exportOpen = useStore((s) => s.exportOpen);
   const setExportOpen = useStore((s) => s.setExportOpen);
   const saveProject = useStore((s) => s.saveProject);
-  const closeProject = useStore((s) => s.closeProject);
   const undo = useStore((s) => s.undo);
   const redo = useStore((s) => s.redo);
   const canUndo = useStore((s) => s.undoStack.length > 0);
@@ -29,7 +28,7 @@ export function VideoWorkspace() {
     <div className="ws">
       <header className="ws__header">
         <div className="ws__left">
-          <button className="icon-btn" title="Back to dashboard" onClick={() => closeProject()}>
+          <button className="icon-btn" title="Save and close (back to Omega)" onClick={async () => { await saveProject(); window.omega.window.close(); }}>
             <I.Home />
           </button>
           <AppMark app="video" size={22} />
