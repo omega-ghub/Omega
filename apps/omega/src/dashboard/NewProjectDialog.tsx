@@ -145,9 +145,7 @@ export function NewProjectDialog({ app }: { app: AppKind }) {
                 <I.Folder size={15} /> Browse…
               </button>
             </div>
-            <span className="field__hint">
-              A folder named after the project is created here. Media stays where it is; nothing is copied unless you ask.
-            </span>
+            <span className="field__hint">A folder named after the project is created here. Media stays where it is; nothing is copied unless you ask.</span>
           </label>
 
           <div className="summary">
@@ -189,11 +187,25 @@ export function NewProjectDialog({ app }: { app: AppKind }) {
               <div className="field-grid">
                 <label className="field">
                   <span>Width</span>
-                  <input type="number" min={16} step={2} value={settings.width} disabled={destination === 'match'} onChange={(e) => setSettings((s) => ({ ...s, width: Number(e.target.value) || s.width }))} />
+                  <input
+                    type="number"
+                    min={16}
+                    step={2}
+                    value={settings.width}
+                    disabled={destination === 'match'}
+                    onChange={(e) => setSettings((s) => ({ ...s, width: Number(e.target.value) || s.width }))}
+                  />
                 </label>
                 <label className="field">
                   <span>Height</span>
-                  <input type="number" min={16} step={2} value={settings.height} disabled={destination === 'match'} onChange={(e) => setSettings((s) => ({ ...s, height: Number(e.target.value) || s.height }))} />
+                  <input
+                    type="number"
+                    min={16}
+                    step={2}
+                    value={settings.height}
+                    disabled={destination === 'match'}
+                    onChange={(e) => setSettings((s) => ({ ...s, height: Number(e.target.value) || s.height }))}
+                  />
                 </label>
                 <label className="field">
                   <span>Frame rate</span>
@@ -226,7 +238,9 @@ export function NewProjectDialog({ app }: { app: AppKind }) {
                   </select>
                 </label>
               </div>
-              <p className="muted" style={{ fontSize: 12, lineHeight: 1.5 }}>Pixels are square and frames progressive.</p>
+              <p className="muted" style={{ fontSize: 12, lineHeight: 1.5 }}>
+                Pixels are square and frames progressive.
+              </p>
             </div>
           )}
 

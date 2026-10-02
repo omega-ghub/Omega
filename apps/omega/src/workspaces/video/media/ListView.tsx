@@ -113,7 +113,7 @@ export function ListView({
             )}
           </div>
           <div className="md-cell md-cell--muted" style={{ gridColumn: '2 / -1' }}>
-            {binCounts.get(b.id) ?? 0} items
+            {(binCounts.get(b.id) ?? 0) === 1 ? '1 item' : `${binCounts.get(b.id) ?? 0} items`}
           </div>
         </div>
       ))}
@@ -196,12 +196,12 @@ const Row = memo(function Row({
       <div className="md-cell">{a.kind === 'image' ? (a.codec ?? '').toUpperCase() : codecLabel(a.codec) || '—'}</div>
       <div className="md-cell md-cell--muted">{audioText(a, codecLabel) || '—'}</div>
       <div className="md-cell md-cell--num">{a.size ? formatBytes(a.size) : '—'}</div>
-      <div className="md-cell">
+      <div className="md-cell md-cell--ctl">
         <button className="md-label-btn" aria-label={`Label: ${a.label ?? 'none'}`} data-testid="md-label" onClick={(e) => onLabel(e.currentTarget)}>
           <span className={`md-dot ${!a.label || a.label === 'none' ? 'md-dot--none' : ''}`} style={a.label && a.label !== 'none' ? { background: LABEL_COLORS[a.label] } : undefined} />
         </button>
       </div>
-      <div className="md-cell">
+      <div className="md-cell md-cell--ctl">
         <Stars value={a.rating ?? 0} onChange={(r) => setRating([a.id], r)} />
       </div>
       <div className="md-cell md-cell--edit">

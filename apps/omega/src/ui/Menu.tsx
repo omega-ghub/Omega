@@ -211,7 +211,12 @@ export function ContextMenu({
     >
       {items.map((m, i) => {
         if (m.type === 'separator') return <div key={i} className="menu__sep" role="separator" />;
-        if (m.type === 'header') return <div key={i} className="menu__header">{m.label}</div>;
+        if (m.type === 'header')
+          return (
+            <div key={i} className="menu__header">
+              {m.label}
+            </div>
+          );
         const on = enabled(m);
         const binding = m.shortcut ?? (m.action ? keysFor(m.action)[0] : undefined);
         return (

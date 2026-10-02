@@ -610,3 +610,14 @@ test('EDL A3/A4 use NONE + AUD; FCPXML puts audio-only media on negative lanes',
   assert.equal(clip.attrs.lane, '-3');
   assert.equal(clip.attrs.srcEnable, undefined);
 });
+
+test('importOtio tolerates malformed items', () => {
+  const doc = {
+    OTIO_SCHEMA: 'Timeline.1',
+    name: 'Bad',
+    tracks: { OTIO_SCHEMA: 'Stack.1', children: [null, 3, { OTIO_SCHEMA: 'Track.1', kind: 'Video', children: [null, { OTIO_SCHEMA: 'Gap.1' }, { OTIO_SCHEMA: 'Clip.2', name: 'x' }] }], markers: 'nope' },
+  };
+  const r = importOtio(project([fixture2398().seq], []), JSON.stringify(doc));
+  assert.equal(r.sequence.name, 'Bad');
+  assert.ok(r.warnings.length >= 1);
+});

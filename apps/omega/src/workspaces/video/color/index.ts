@@ -17,7 +17,6 @@ import {
   setCompare,
   setInputTransformForSource,
   toggleBypass,
-  toggleMatte,
 } from './colorActions';
 import { getReference } from './stills';
 
@@ -49,9 +48,7 @@ registerActions([
     hint: 'Matches the selected clip’s levels, balance and saturation to the reference still',
   },
   { id: 'color.grabStill', label: 'Grab still', group: 'Color', keys: ['Mod+Alt+G'], run: () => void grabStill(), enabled: hasProject, hint: 'Adds the program frame to the stills gallery' },
-  { id: 'color.compareSplit', label: 'Compare: split view', group: 'Color', keys: ['Mod+Alt+W'], run: () => setCompare('split'), enabled: hasProject, hint: 'Ungraded on the left, graded on the right' },
-  { id: 'color.compareBypass', label: 'Compare: show ungraded', group: 'Color', run: () => setCompare('bypass'), enabled: hasProject },
-  { id: 'color.toggleMatte', label: 'Show qualifier matte', group: 'Color', run: toggleMatte, enabled: hasProject, hint: 'Shows the selected clip’s HSL key as a matte in the viewer' },
+  { id: 'color.compareSplit', label: 'Grade compare: split view', group: 'Color', keys: ['Mod+Alt+W'], run: () => setCompare('split'), enabled: hasProject, hint: 'Ungraded on the left, graded on the right (drag the split in the color panel)' },
   { id: 'color.importLut', label: 'Import LUT…', group: 'Color', run: () => void importLuts(), enabled: hasProject, hint: 'Imports .cube LUT files into the project' },
   { id: 'color.applyToSource', label: 'Apply grade to all clips from this source', group: 'Color', run: applyToSource, enabled: hasTarget },
   { id: 'color.inputForSource', label: 'Set input transform for all clips of this source', group: 'Color', run: setInputTransformForSource, enabled: hasTarget },

@@ -35,6 +35,12 @@ export interface DecodeOptions {
   maxHeight?: number;
   /** Read the proxy file instead of the original when one is ready. */
   useProxy?: boolean;
+  /**
+   * decodeFrameAt only: scrubbing mode. A request that is still waiting when a
+   * newer `latest` request for the same asset and size arrives is skipped and
+   * resolves null, so fast scrubs never build a backlog.
+   */
+  latest?: boolean;
 }
 
 const EPS = 1e-5;
@@ -97,8 +103,9 @@ export class FrameReader {
   }
 
   /** frameAt + an ImageBitmap copy, atomically (the copy outlives the reader). */
-  async bitmapAt(sourceTime: number): Promise<ImageBitmap | null> {
+  async bitmapAt(sourceTime: number, shouldRun?: () => boolean): Promise<ImageBitmap | null> {
     return this.serial(async () => {
+      if (shouldRun && !shouldRun()) return null;
       const img = await this.backend.frameAt(sourceTime);
       return img ? createImageBitmap(img as ImageBitmapSource) : null;
     });
@@ -317,13 +324,16 @@ const bitmaps = new LruCache<string, ImageBitmap>(BITMAP_BUDGET);
 const inflight = new Map<string, Promise<ImageBitmap | null>>();
 const readers = new Map<string, { reader: Promise<FrameReader | null>; assetId: string; used: number }>();
 const failedOpen = new Map<string, number>();
+const latestSeq = new Map<string, number>();
 
 function sizeKey(opts: DecodeOptions): string {
   return `${Math.round(opts.maxWidth ?? 0)}x${Math.round(opts.maxHeight ?? 0)}`;
 }
 
+const readerKey = (asset: MediaAsset, path: string, opts: DecodeOptions) => `${asset.id}|${path}|${sizeKey(opts)}`;
+
 function readerFor(asset: MediaAsset, path: string, opts: DecodeOptions): Promise<FrameReader | null> {
-  const key = `${asset.id}|${path}|${sizeKey(opts)}`;
+  const key = readerKey(asset, path, opts);
   const hit = readers.get(key);
   if (hit) {
     hit.used = performance.now();
@@ -357,10 +367,17 @@ export async function decodeFrameAt(asset: MediaAsset, sourceTime: number, opts:
   if (hit) return hit;
   const pending = inflight.get(key);
   if (pending) return pending;
+  const rk = readerKey(asset, src.path, opts);
+  let shouldRun: (() => boolean) | undefined;
+  if (opts.latest) {
+    const seq = (latestSeq.get(rk) ?? 0) + 1;
+    latestSeq.set(rk, seq);
+    shouldRun = () => latestSeq.get(rk) === seq;
+  }
   const p = (async () => {
     const reader = await readerFor(asset, src.path, opts);
     if (!reader) return null;
-    const bmp = await reader.bitmapAt(Math.max(0, sourceTime));
+    const bmp = await reader.bitmapAt(Math.max(0, sourceTime), shouldRun);
     if (bmp) bitmaps.set(key, bmp, bmp.width * bmp.height * 4);
     return bmp;
   })()

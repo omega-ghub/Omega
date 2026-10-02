@@ -47,7 +47,7 @@ export function Panel({
 
   return (
     <section
-      className={`panel sh-panel ${focused ? "is-focused" : ""} ${maximized ? "is-maximized" : ""} ${className}`}
+      className={`panel sh-panel ${focused ? 'is-focused' : ''} ${maximized ? 'is-maximized' : ''} ${className}`}
       data-panel={id}
       data-autohead={chromeless === 'auto' ? '' : undefined}
       data-testid={`sh-panel-${id}`}
@@ -57,40 +57,43 @@ export function Panel({
       onPointerLeave={() => setHovered(null)}
     >
       {chromeless !== true && (
-      <header className={`panel__head sh-panel__head ${flushHead ? 'sh-panel__head--flush' : ''}`} onDoubleClick={(e) => e.target === e.currentTarget && setMaximized(maximized ? null : id)}>
-        {tabs && tabs.length > 1 ? (
-          <div className="tabs" role="tablist">
-            {tabs.map((t) => (
-              <button
-                key={t.id}
-                role="tab"
-                aria-selected={t.id === activeTab}
-                className={`tab ${t.id === activeTab ? 'is-active' : ''}`}
-                data-testid={`sh-tab-${t.id}`}
-                onClick={() => onTab?.(t.id)}
-              >
-                {t.label}
-              </button>
-            ))}
+        <header
+          className={`panel__head sh-panel__head ${flushHead ? 'sh-panel__head--flush' : ''}`}
+          onDoubleClick={(e) => e.target === e.currentTarget && setMaximized(maximized ? null : id)}
+        >
+          {tabs && tabs.length > 1 ? (
+            <div className="tabs" role="tablist">
+              {tabs.map((t) => (
+                <button
+                  key={t.id}
+                  role="tab"
+                  aria-selected={t.id === activeTab}
+                  className={`tab ${t.id === activeTab ? 'is-active' : ''}`}
+                  data-testid={`sh-tab-${t.id}`}
+                  onClick={() => onTab?.(t.id)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <span className="panel__title">{tabs?.[0]?.label ?? title}</span>
+          )}
+          {subtitle && <span className="panel__subtitle sh-panel__subtitle">{subtitle}</span>}
+          <div className="panel__actions">
+            {actions}
+            <button
+              className="icon-btn icon-btn--xs sh-panel__max"
+              data-tip={maximized ? 'Restore layout' : 'Maximize panel'}
+              data-tip-action="view.maximizePanel"
+              data-testid={`sh-maximize-${id}`}
+              aria-label={maximized ? 'Restore layout' : 'Maximize panel'}
+              onClick={() => setMaximized(maximized ? null : id)}
+            >
+              {maximized ? <I.Collapse size={13} /> : <I.Expand size={13} />}
+            </button>
           </div>
-        ) : (
-          <span className="panel__title">{tabs?.[0]?.label ?? title}</span>
-        )}
-        {subtitle && <span className="panel__subtitle sh-panel__subtitle">{subtitle}</span>}
-        <div className="panel__actions">
-          {actions}
-          <button
-            className="icon-btn icon-btn--xs sh-panel__max"
-            data-tip={maximized ? 'Restore layout' : 'Maximize panel'}
-            data-tip-action="view.maximizePanel"
-            data-testid={`sh-maximize-${id}`}
-            aria-label={maximized ? 'Restore layout' : 'Maximize panel'}
-            onClick={() => setMaximized(maximized ? null : id)}
-          >
-            {maximized ? <I.Collapse size={13} /> : <I.Expand size={13} />}
-          </button>
-        </div>
-      </header>
+        </header>
       )}
       <div className="panel__body sh-panel__body">
         <PanelBoundary name={title ?? tabs?.find((t) => t.id === activeTab)?.label ?? id}>{children}</PanelBoundary>

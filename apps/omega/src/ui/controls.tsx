@@ -5,34 +5,25 @@
 import type { ReactNode } from 'react';
 import { displayKey, isMac } from '../workspaces/video/actions';
 
-export function Switch({
+export function Switch({ checked, onChange, disabled, label, testId }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; label?: string; testId?: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} aria-label={label} className="switch" disabled={disabled} data-testid={testId} onClick={() => onChange(!checked)} />
+  );
+}
+
+export function Checkbox({
   checked,
   onChange,
+  children,
   disabled,
-  label,
   testId,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
+  children?: ReactNode;
   disabled?: boolean;
-  label?: string;
   testId?: string;
 }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      className="switch"
-      disabled={disabled}
-      data-testid={testId}
-      onClick={() => onChange(!checked)}
-    />
-  );
-}
-
-export function Checkbox({ checked, onChange, children, disabled, testId }: { checked: boolean; onChange: (v: boolean) => void; children?: ReactNode; disabled?: boolean; testId?: string }) {
   return (
     <label className="check">
       <input type="checkbox" className="checkbox" checked={checked} disabled={disabled} data-testid={testId} onChange={(e) => onChange(e.target.checked)} />

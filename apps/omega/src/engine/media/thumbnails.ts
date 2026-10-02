@@ -116,6 +116,7 @@ export function onThumbnails(cb: (assetId: string) => void): () => void {
 /** Forgets everything about an asset (relink, replace footage, removal). */
 export function invalidateThumbnails(assetId: string): void {
   cache.deleteWhere((k) => k.startsWith(`${assetId}|`));
+  posters.deleteWhere((k) => k.startsWith(`${assetId}|`));
   for (const [k, j] of [...queue.entries()]) if (j.assetId === assetId) queue.delete(k);
   closeSink(assetId);
   infos.delete(assetId);
@@ -304,4 +305,102 @@ function notify(assetId: string) {
       }
     }
   }, wait);
+}
+
+// ---------------------------------------------------------------------------
+// Posters: one sharper frame per asset for large browser cards. Decoded one
+// at a time at a height bucket (multiples of 120 px), most recent first, and
+// announced through onThumbnails like filmstrip thumbnails.
+// ---------------------------------------------------------------------------
+
+const POSTER_BUDGET = 64 * 1024 * 1024;
+const POSTER_STEP = 120;
+const posters = new LruCache<string, ImageBitmap>(POSTER_BUDGET);
+const posterQueue = new Map<string, { asset: MediaAsset; time: number; height: number }>();
+const posterFailed = new Set<string>();
+let posterRunning = false;
+
+const posterBucket = (h: number) => Math.min(1080, Math.max(POSTER_STEP, Math.ceil(h / POSTER_STEP) * POSTER_STEP));
+const posterKey = (a: MediaAsset, time: number, bucket: number) => `${a.id}|${a.path}|${time.toFixed(3)}|${bucket}`;
+
+/** A sharp poster at least `height` px tall (device pixels) if one is ready; never decodes. */
+export function getPoster(asset: MediaAsset, time: number, height: number): ImageBitmap | null {
+  const b = posterBucket(height);
+  for (let k = b; k <= Math.max(b, 1080); k += POSTER_STEP) {
+    const hit = posters.get(posterKey(asset, time, k));
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** Queues a poster decode (deduplicated; the latest request runs first). */
+export function requestPoster(asset: MediaAsset, time: number, height: number): void {
+  if (!asset || asset.offline || (asset.kind !== 'image' && !asset.hasVideo)) return;
+  const b = posterBucket(height);
+  const key = posterKey(asset, time, b);
+  if (posters.has(key) || posterFailed.has(key)) return;
+  posterQueue.delete(key);
+  posterQueue.set(key, { asset, time, height: b });
+  if (posterQueue.size > 64) posterQueue.delete(posterQueue.keys().next().value as string);
+  void pumpPosters();
+}
+
+async function pumpPosters() {
+  if (posterRunning) return;
+  posterRunning = true;
+  try {
+    while (posterQueue.size) {
+      // newest first: what the user scrolled to most recently
+      const key = [...posterQueue.keys()].pop()!;
+      const job = posterQueue.get(key)!;
+      posterQueue.delete(key);
+      try {
+        const bmp = await decodePoster(job.asset, job.time, job.height);
+        if (bmp) {
+          posters.set(key, bmp, bmp.width * bmp.height * 4);
+          notify(job.asset.id);
+        } else posterFailed.add(key);
+      } catch (err) {
+        posterFailed.add(key);
+        console.warn('[media] poster failed', job.asset.name, err);
+      }
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  } finally {
+    posterRunning = false;
+  }
+}
+
+async function decodePoster(asset: MediaAsset, time: number, height: number): Promise<ImageBitmap | null> {
+  if (asset.kind === 'image') {
+    const img = await loadImage(asset.path);
+    const nat = imageSize(img);
+    const out = fitWithin(nat.width, nat.height, undefined, height);
+    const canvas = document.createElement('canvas');
+    canvas.width = out.width;
+    canvas.height = out.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, out.width, out.height);
+    img.src = '';
+    return createImageBitmap(canvas);
+  }
+  const src = sourcePathFor(asset, true);
+  let input = openInput(src.path, 8);
+  try {
+    let track = await input.getPrimaryVideoTrack().catch(() => null);
+    if ((!track || !(await track.canDecode().catch(() => false))) && src.proxy) {
+      input.dispose();
+      input = openInput(asset.path, 8);
+      track = await input.getPrimaryVideoTrack().catch(() => null);
+    }
+    if (!track || !(await track.canDecode().catch(() => false))) return null;
+    const dh = await track.getDisplayHeight();
+    const sink = new CanvasSink(track, { height: Math.min(height, dh) });
+    const first = await track.getFirstTimestamp().catch(() => 0);
+    const wc = await sink.getCanvas(Math.max(time, first));
+    return wc ? createImageBitmap(wc.canvas) : null;
+  } finally {
+    input.dispose();
+  }
 }

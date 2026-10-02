@@ -34,7 +34,11 @@ function read(el: HTMLElement): Omit<TipState, 'rect'> | null {
     keys = keysFor(actionId).slice(0, 1);
     if (!text) text = getAction(actionId)?.label ?? '';
   }
-  if (el.dataset.tipKeys) keys = el.dataset.tipKeys.split(',').map((k) => k.trim()).filter(Boolean);
+  if (el.dataset.tipKeys)
+    keys = el.dataset.tipKeys
+      .split(',')
+      .map((k) => k.trim())
+      .filter(Boolean);
   if (!text && keys.length === 0) return null;
   const side = (el.dataset.tipSide as TipState['side']) || 'bottom';
   return { text, keys, side };
@@ -144,12 +148,7 @@ function TipBubble({ tip }: { tip: TipState }) {
   }, [tip]);
 
   return (
-    <div
-      ref={ref}
-      className="tooltip"
-      role="tooltip"
-      style={{ left: pos?.left ?? -9999, top: pos?.top ?? -9999, ['--tip-from' as string]: pos?.from ?? '0px' }}
-    >
+    <div ref={ref} className="tooltip" role="tooltip" style={{ left: pos?.left ?? -9999, top: pos?.top ?? -9999, ['--tip-from' as string]: pos?.from ?? '0px' }}>
       {tip.text && <span>{tip.text}</span>}
       {tip.keys.length > 0 && (
         <span className="keys-inline">

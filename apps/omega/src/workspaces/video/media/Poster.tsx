@@ -3,7 +3,7 @@
 import { memo, useCallback, useEffect, useRef } from 'react';
 import { getPeaks, onPeaks, requestPeaks } from '../../../engine/audio/engine';
 import { posterTime } from '../../../engine/media/mediaMath';
-import { getThumbnail, onThumbnails, requestThumbnails } from '../../../engine/media/thumbnails';
+import { getPoster, getThumbnail, onThumbnails, requestPoster, requestThumbnails, THUMB_HEIGHT } from '../../../engine/media/thumbnails';
 import { useEditor } from '../../../state/store';
 import type { MediaAsset } from '../../../state/types';
 import { I } from '../../../ui/Icons';
@@ -74,7 +74,13 @@ export const Poster = memo(function Poster({ asset, onScrub }: { asset: MediaAss
       }
     } else {
       const t = hoverRef.current ?? posterTime(a);
-      const bmp = getThumbnail(a.id, t);
+      let bmp: ImageBitmap | null = null;
+      // large cards: a sharp poster frame (filmstrip thumbnails are ~96 px tall)
+      if (hoverRef.current === null && h > (a.kind === 'image' ? THUMB_HEIGHT * 2 : THUMB_HEIGHT) * 1.15) {
+        bmp = getPoster(a, t, h);
+        if (!bmp && visibleRef.current) requestPoster(a, t, h);
+      }
+      bmp ??= getThumbnail(a.id, t);
       if (bmp) {
         try {
           drawContain(ctx, bmp, w, h);

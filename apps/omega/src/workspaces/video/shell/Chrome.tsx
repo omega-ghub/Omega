@@ -41,7 +41,13 @@ export function SaveState() {
   else [state, text] = ['saved', lastSavedAt ? savedLabel(lastSavedAt) : 'Saved'];
 
   return (
-    <span className={`sh-save sh-save--${state}`} data-testid="sh-save-state" data-state={state} data-tip={path ? `${path} · saves automatically` : undefined} data-tip-side="bottom">
+    <span
+      className={`sh-save sh-save--${state}`}
+      data-testid="sh-save-state"
+      data-state={state}
+      data-tip={path ? `${path} · saves automatically` : undefined}
+      data-tip-side="bottom"
+    >
       {state === 'saving' ? <span className="sh-save__spin" /> : state === 'readonly' ? <I.Lock size={12} /> : <span className="sh-save__dot" />}
       {text}
     </span>
@@ -79,10 +85,26 @@ export function TitleActions() {
   const paletteKey = keysFor('shell.palette')[0];
   return (
     <div className="sh-actions">
-      <button className="icon-btn icon-btn--sm" disabled={!past.length || readOnly} onClick={() => runAction('edit.undo')} data-tip={undoLabel} data-tip-keys={keysFor('edit.undo')[0]} aria-label={undoLabel} data-testid="sh-undo">
+      <button
+        className="icon-btn icon-btn--sm"
+        disabled={!past.length || readOnly}
+        onClick={() => runAction('edit.undo')}
+        data-tip={undoLabel}
+        data-tip-keys={keysFor('edit.undo')[0]}
+        aria-label={undoLabel}
+        data-testid="sh-undo"
+      >
         <I.Undo size={16} />
       </button>
-      <button className="icon-btn icon-btn--sm" disabled={!future.length || readOnly} onClick={() => runAction('edit.redo')} data-tip={redoLabel} data-tip-keys={keysFor('edit.redo')[0]} aria-label={redoLabel} data-testid="sh-redo">
+      <button
+        className="icon-btn icon-btn--sm"
+        disabled={!future.length || readOnly}
+        onClick={() => runAction('edit.redo')}
+        data-tip={redoLabel}
+        data-tip-keys={keysFor('edit.redo')[0]}
+        aria-label={redoLabel}
+        data-testid="sh-redo"
+      >
         <I.Redo size={16} />
       </button>
       <span className="sh-actions__sep" />
@@ -91,10 +113,24 @@ export function TitleActions() {
         <span>Search</span>
         {paletteKey && <Keys binding={paletteKey} />}
       </button>
-      <button className="icon-btn icon-btn--sm" onClick={() => runAction('shell.shortcuts')} data-tip="Keyboard shortcuts" data-tip-action="shell.shortcuts" aria-label="Keyboard shortcuts" data-testid="sh-shortcuts-btn">
+      <button
+        className="icon-btn icon-btn--sm"
+        onClick={() => runAction('shell.shortcuts')}
+        data-tip="Keyboard shortcuts"
+        data-tip-action="shell.shortcuts"
+        aria-label="Keyboard shortcuts"
+        data-testid="sh-shortcuts-btn"
+      >
         <I.Keyboard size={16} />
       </button>
-      <button className="icon-btn icon-btn--sm" onClick={() => runAction('shell.preferences')} data-tip="Preferences" data-tip-action="shell.preferences" aria-label="Preferences" data-testid="sh-settings-btn">
+      <button
+        className="icon-btn icon-btn--sm"
+        onClick={() => runAction('shell.preferences')}
+        data-tip="Preferences"
+        data-tip-action="shell.preferences"
+        aria-label="Preferences"
+        data-testid="sh-settings-btn"
+      >
         <I.Settings size={16} />
       </button>
     </div>

@@ -389,6 +389,8 @@ export function transitionSpans(track: Track, clips: Clip[]): TransitionSpan[] {
 export class TimelineRenderer {
   private requests: MediaRequests;
   private thumbWanted = new Map<string, { asset: MediaAsset; times: Set<number> }>();
+  private envTop = new Float32Array(0);
+  private envBot = new Float32Array(0);
   private peaksWanted = new Set<string>();
 
   constructor(requests: MediaRequests) {
@@ -843,23 +845,33 @@ export class TimelineRenderer {
     const amp = (h - 6) / 2;
     const gainKfs = c.keyframes['audio.gain'];
     const staticGain = Math.pow(10, c.audio.gain / 20);
-    ctx.fillStyle = color;
     const a = Math.max(Math.floor(vx0), Math.floor(x));
     const b = Math.min(Math.ceil(vx1), Math.ceil(x + w));
+    const n = b - a;
+    if (n <= 0) return;
     const zoom = s.zoom;
+    // envelope per pixel column, drawn as ONE polygon (top edge forward, bottom edge back)
+    const top = this.envTop.length >= n ? this.envTop : (this.envTop = new Float32Array(n * 2));
+    const bot = this.envBot.length >= n ? this.envBot : (this.envBot = new Float32Array(n * 2));
     let prevSrc = map((a - x) / zoom);
-    for (let px = a; px < b; px++) {
-      const l1 = (px + 1 - x) / zoom;
+    for (let i = 0; i < n; i++) {
+      const l1 = (a + i + 1 - x) / zoom;
       const src1 = map(l1);
       const [mn, mx] = peakRange(peaks, levels, prevSrc, src1);
       prevSrc = src1;
       const g = gainKfs?.length ? Math.pow(10, evaluate(gainKfs, l1) / 20) : staticGain;
-      const top = Math.max(-1, Math.min(1, mx * g));
-      const bot = Math.max(-1, Math.min(1, mn * g));
-      const yTop = mid - top * amp;
-      const yBot = mid - bot * amp;
-      ctx.fillRect(px, yTop, 1, Math.max(1, yBot - yTop));
+      const yt = mid - Math.max(-1, Math.min(1, mx * g)) * amp;
+      const yb = mid - Math.max(-1, Math.min(1, mn * g)) * amp;
+      top[i] = Math.min(yt, mid - 0.5);
+      bot[i] = Math.max(yb, mid + 0.5);
     }
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(a, top[0]);
+    for (let i = 0; i < n; i++) ctx.lineTo(a + i + 1, top[i]);
+    for (let i = n - 1; i >= 0; i--) ctx.lineTo(a + i, bot[i]);
+    ctx.closePath();
+    ctx.fill();
   }
 
   private drawBand(ctx: CanvasRenderingContext2D, s: DrawState, c: Clip, tk: string, x: number, y: number, w: number, h: number, vx0: number, vx1: number) {

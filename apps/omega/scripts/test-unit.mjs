@@ -21,7 +21,7 @@ if (!files.length) {
   console.log('no tests found');
   process.exit(0);
 }
-const out = join(root, 'node_modules/.cache/unit');
+const out = join(root, 'node_modules/.cache/unit', String(process.pid));
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 const outFiles = [];
@@ -31,4 +31,5 @@ for (const f of files) {
   outFiles.push(o);
 }
 const r = spawnSync(process.execPath, ['--test', ...outFiles], { stdio: 'inherit' });
+rmSync(out, { recursive: true, force: true });
 process.exit(r.status ?? 1);

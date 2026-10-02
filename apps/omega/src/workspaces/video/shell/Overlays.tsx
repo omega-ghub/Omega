@@ -34,7 +34,10 @@ export function ToastHost() {
     if (!toast) return;
     setList((l) => (l.some((t) => t.id === toast.id) ? l : [...l.filter((t) => t.message !== toast.message), toast].slice(-4)));
     const ms = toast.kind === 'error' ? 6500 : 3400;
-    timers.current.set(toast.id, window.setTimeout(() => dismiss(toast.id), ms));
+    timers.current.set(
+      toast.id,
+      window.setTimeout(() => dismiss(toast.id), ms),
+    );
   }, [toast]);
 
   useEffect(() => {

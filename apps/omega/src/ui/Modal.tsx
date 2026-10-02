@@ -67,16 +67,7 @@ export function Modal({
 
   return (
     <div className="modal__backdrop" onMouseDown={(e) => e.target === e.currentTarget && dismissRef.current && onClose()}>
-      <div
-        ref={ref}
-        className={`modal ${className}`}
-        style={{ width, ...style }}
-        role="dialog"
-        aria-modal="true"
-        aria-label={label}
-        tabIndex={-1}
-        data-testid={testId}
-      >
+      <div ref={ref} className={`modal ${className}`} style={{ width, ...style }} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} data-testid={testId}>
         {children}
       </div>
     </div>
@@ -123,7 +114,15 @@ export function Dialog({
   children: ReactNode;
 }) {
   return (
-    <Modal onClose={onClose} width={width} className={`dialog ${className}`} testId={testId} label={typeof title === 'string' ? title : undefined} dismissible={dismissible} style={style}>
+    <Modal
+      onClose={onClose}
+      width={width}
+      className={`dialog ${className}`}
+      testId={testId}
+      label={typeof title === 'string' ? title : undefined}
+      dismissible={dismissible}
+      style={style}
+    >
       <div className="dialog__head">
         {icon && <div className="dialog__icon">{icon}</div>}
         <div className="dialog__titles">

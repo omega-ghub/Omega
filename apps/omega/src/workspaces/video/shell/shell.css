@@ -68,7 +68,9 @@
 .sh-ws > button.is-active {
   color: var(--text);
   background: var(--surface-3);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .sh-actions {
@@ -95,7 +97,9 @@
   box-shadow: inset 0 0 0 1px var(--border);
   color: var(--text-3);
   font-size: var(--fs-sm);
-  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
 }
 .sh-search > span:first-of-type {
   min-width: 64px;
@@ -623,7 +627,9 @@
   padding: 0 4px;
   border-radius: 6px;
   box-shadow: inset 0 0 0 1px transparent;
-  transition: box-shadow var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+  transition:
+    box-shadow var(--dur-1) var(--ease),
+    background var(--dur-1) var(--ease);
 }
 .sh-keys__chip-btn:hover {
   background: var(--hover);
@@ -912,13 +918,17 @@
   padding: 8px 14px 8px 11px;
   border-radius: 8px;
   background: var(--surface-3);
-  box-shadow: 0 0 0 1px var(--border-strong), var(--shadow-2);
+  box-shadow:
+    0 0 0 1px var(--border-strong),
+    var(--shadow-2);
   color: var(--text);
   font-size: var(--fs-md);
   pointer-events: auto;
   cursor: default;
   animation: sh-toast-in var(--dur-3) var(--ease-out);
-  transition: opacity 160ms var(--ease), transform 160ms var(--ease);
+  transition:
+    opacity 160ms var(--ease),
+    transform 160ms var(--ease);
 }
 .sh-toast.is-leaving {
   opacity: 0;
@@ -939,7 +949,9 @@
   color: var(--ok);
 }
 .sh-toast--error {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 35%, transparent), var(--shadow-2);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--danger) 35%, transparent),
+    var(--shadow-2);
 }
 .sh-toast--error .sh-toast__icon {
   color: var(--danger);
@@ -977,7 +989,9 @@
   padding: 22px 30px;
   border-radius: var(--radius);
   background: var(--surface-2);
-  box-shadow: 0 0 0 1px var(--border-strong), var(--shadow-3);
+  box-shadow:
+    0 0 0 1px var(--border-strong),
+    var(--shadow-3);
 }
 .sh-drop__icon {
   width: 40px;
@@ -1008,7 +1022,9 @@
   width: 320px;
   border-radius: var(--radius);
   background: var(--surface-2);
-  box-shadow: 0 0 0 1px var(--border-strong), var(--shadow-3);
+  box-shadow:
+    0 0 0 1px var(--border-strong),
+    var(--shadow-3);
   animation: pop-in var(--dur-3) var(--ease-out);
 }
 .sh-tips__head {

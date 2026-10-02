@@ -88,11 +88,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           noteRecent(a.id);
           a.run();
         },
-        extra: [
-          { text: a.group, weight: 0.55 },
-          { text: a.id, weight: 0.5 },
-          ...(a.hint ? [{ text: a.hint, weight: 0.4 }] : []),
-        ],
+        extra: [{ text: a.group, weight: 0.55 }, { text: a.id, weight: 0.5 }, ...(a.hint ? [{ text: a.hint, weight: 0.4 }] : [])],
         recentRank: r >= 0 ? r : undefined,
       });
     }
@@ -138,9 +134,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     const q = query.trim();
     if (!q) {
       const recents = all.filter((i) => i.recentRank !== undefined).sort((a, b) => a.recentRank! - b.recentRank!);
-      const rest = all
-        .filter((i) => i.kind === 'action' && i.recentRank === undefined)
-        .sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
+      const rest = all.filter((i) => i.kind === 'action' && i.recentRank === undefined).sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
       return [
         ...recents.map((item) => ({ item, positions: [] as number[], section: 'Recent' })),
         ...rest.map((item) => ({ item, positions: [] as number[], section: item.group })),
@@ -156,7 +150,13 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       // the id's last segment naming the query ('timeline.split' for "split") is a strong hint
       if (item.kind === 'action') {
         const last = item.key.slice(2).split('.').pop()!.toLowerCase();
-        if (q.toLowerCase().split(/\s+/).some((tok) => last.startsWith(tok))) score += 10;
+        if (
+          q
+            .toLowerCase()
+            .split(/\s+/)
+            .some((tok) => last.startsWith(tok))
+        )
+          score += 10;
       }
       if (item.kind === 'clip') score -= 8;
       scored.push({ item, positions: m.positions, score, section: '' });

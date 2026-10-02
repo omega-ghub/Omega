@@ -258,15 +258,20 @@ void main() {
  * Specialized per mask count, sampler, blend path and mode.
  */
 export const MAX_MASKS = 8;
-export function placeFragment(o: { masks: number; bicubic: boolean; blend: 'hw' | 'shader' | 'adjust'; mode: number }): string {
+export function placeFragment(o: { masks: number; bicubic: boolean; blend: 'hw' | 'shader' | 'adjust'; mode: number; decode?: { code: number; gamut: boolean } | null }): string {
   const masks = Math.max(0, Math.min(MAX_MASKS, o.masks));
+  const d = o.decode;
   return /* glsl */ `${HEAD}
 #define MASKS ${masks}
 ${o.bicubic ? '#define BICUBIC' : ''}
 #define BLEND_${o.blend.toUpperCase()}
+${d ? '#define RAW' : ''}
+${d?.gamut ? '#define USE_GAMUT' : ''}
 ${GLSL_BLEND}
 ${glslBlendFns(o.mode)}
+${d ? `${GLSL_COLOR}\n${glslDecodeFn(d.code)}` : ''}
 uniform sampler2D u_layer;
+uniform mat3 u_gamut;
 uniform sampler2D u_dst;
 uniform vec2 u_dstSize;
 uniform float u_opacity;
@@ -281,6 +286,22 @@ uniform vec4 u_mC[MASKS];  // opacity, invert, mode (0 add, 1 sub, 2 intersect),
 #endif
 in vec2 v_uv;
 out vec4 outColor;
+
+#ifdef RAW
+// Direct path: u_layer is the raw upload (display-encoded, premultiplied by the browser, top row first).
+#define FETCH(p) texture(u_layer, vec2((p).x, 1.0 - (p).y))
+vec4 decodeTex(vec4 t) {
+  float a = clamp(t.a, 0.0, 1.0);
+  vec3 lin = decodeIn(a > 0.0 ? t.rgb / a : vec3(0.0));
+#ifdef USE_GAMUT
+  lin = u_gamut * lin;
+#endif
+  return vec4(lin * a, a);
+}
+#else
+#define FETCH(p) texture(u_layer, p)
+vec4 decodeTex(vec4 t) { return t; }
+#endif
 
 #ifdef BICUBIC
 vec4 sampleLayer(vec2 uv) {
@@ -298,20 +319,20 @@ vec4 sampleLayer(vec2 uv) {
   vec2 p3 = (t1 + 2.0) / size;
   vec2 p12 = (t1 + o12) / size;
   vec4 r = vec4(0.0);
-  r += texture(u_layer, vec2(p0.x, p0.y)) * w0.x * w0.y;
-  r += texture(u_layer, vec2(p12.x, p0.y)) * w12.x * w0.y;
-  r += texture(u_layer, vec2(p3.x, p0.y)) * w3.x * w0.y;
-  r += texture(u_layer, vec2(p0.x, p12.y)) * w0.x * w12.y;
-  r += texture(u_layer, vec2(p12.x, p12.y)) * w12.x * w12.y;
-  r += texture(u_layer, vec2(p3.x, p12.y)) * w3.x * w12.y;
-  r += texture(u_layer, vec2(p0.x, p3.y)) * w0.x * w3.y;
-  r += texture(u_layer, vec2(p12.x, p3.y)) * w12.x * w3.y;
-  r += texture(u_layer, vec2(p3.x, p3.y)) * w3.x * w3.y;
+  r += FETCH(vec2(p0.x, p0.y)) * w0.x * w0.y;
+  r += FETCH(vec2(p12.x, p0.y)) * w12.x * w0.y;
+  r += FETCH(vec2(p3.x, p0.y)) * w3.x * w0.y;
+  r += FETCH(vec2(p0.x, p12.y)) * w0.x * w12.y;
+  r += FETCH(vec2(p12.x, p12.y)) * w12.x * w12.y;
+  r += FETCH(vec2(p3.x, p12.y)) * w3.x * w12.y;
+  r += FETCH(vec2(p0.x, p3.y)) * w0.x * w3.y;
+  r += FETCH(vec2(p12.x, p3.y)) * w12.x * w3.y;
+  r += FETCH(vec2(p3.x, p3.y)) * w3.x * w3.y;
   r.a = clamp(r.a, 0.0, 1.0);
-  return r;
+  return decodeTex(r);
 }
 #else
-vec4 sampleLayer(vec2 uv) { return texture(u_layer, uv); }
+vec4 sampleLayer(vec2 uv) { return decodeTex(FETCH(uv)); }
 #endif
 
 // inside distance d (layer px): hard edges anti-aliased over fw, soft edges feathered inward

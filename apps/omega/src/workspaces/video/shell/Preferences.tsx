@@ -144,7 +144,8 @@ function Editing() {
       <div className="note sh-prefs__note">
         <I.Save size={15} />
         <span>
-          Delta saves every few seconds while you work, and keeps rolling backups in the project's <code>.backups</code> folder. Press <Keys binding={keysFor('shell.save')[0] ?? 'Mod+S'} /> to save and back up immediately.
+          Delta saves every few seconds while you work, and keeps rolling backups in the project's <code>.backups</code> folder. Press{' '}
+          <Keys binding={keysFor('shell.save')[0] ?? 'Mod+S'} /> to save and back up immediately.
         </span>
       </div>
     </>
@@ -238,8 +239,8 @@ function About() {
         </div>
       </div>
       <p className="sh-about__legal">
-        © Omega. Delta runs entirely on this computer: no account, no telemetry, and your media never leaves the machine. Decoding and encoding use the
-        platform's WebCodecs through Mediabunny (MPL-2.0); interface type is Inter and JetBrains Mono (SIL Open Font License).
+        © Omega. Delta runs entirely on this computer: no account, no telemetry, and your media never leaves the machine. Decoding and encoding use the platform's WebCodecs through
+        Mediabunny (MPL-2.0); interface type is Inter and JetBrains Mono (SIL Open Font License).
       </p>
     </div>
   );

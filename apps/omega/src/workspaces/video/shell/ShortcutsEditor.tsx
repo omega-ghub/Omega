@@ -62,7 +62,16 @@ export function ShortcutsEditor({ onClose, initialView = 'edit' }: { onClose: ()
     const q = query.trim();
     if (!q) return rows;
     return rows.filter((r) => {
-      if (searchScore(q, { label: r.label, extra: [{ text: r.group, weight: 0.6 }, { text: r.id, weight: 0.5 }] })) return true;
+      if (
+        searchScore(q, {
+          label: r.label,
+          extra: [
+            { text: r.group, weight: 0.6 },
+            { text: r.id, weight: 0.5 },
+          ],
+        })
+      )
+        return true;
       // also find by key: "ctrl k", "B"
       const keyText = r.keys.map((k) => `${k} ${displayKey(k)}`).join(' ');
       return keyText.toLowerCase().includes(q.toLowerCase());
@@ -248,7 +257,9 @@ export function ShortcutsEditor({ onClose, initialView = 'edit' }: { onClose: ()
                       <div className="sh-keys__binds">
                         {r.keys.map((k, i) =>
                           capture?.id === r.id && capture.index === i ? (
-                            <span key={i} className="sh-keys__capture">Press keys…</span>
+                            <span key={i} className="sh-keys__capture">
+                              Press keys…
+                            </span>
                           ) : (
                             <span key={i} className="sh-keys__chip">
                               <button className="sh-keys__chip-btn" onClick={() => setCapture({ id: r.id, index: i })} data-tip="Click to change" data-testid="sh-shortcut-chip">

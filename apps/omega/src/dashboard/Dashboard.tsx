@@ -426,8 +426,8 @@ function LearnTab() {
         <div>
           <h1 className="page__title">Learn</h1>
           <p className="page__sub">
-            {THEMES.video.name} ships with a Premiere Pro–compatible keyboard layout, so your muscle memory carries over. Final Cut Pro and DaVinci Resolve layouts are one
-            click away in its Keyboard Shortcuts window.
+            {THEMES.video.name} ships with a Premiere Pro–compatible keyboard layout, so your muscle memory carries over. Final Cut Pro and DaVinci Resolve layouts are one click
+            away in its Keyboard Shortcuts window.
           </p>
         </div>
       </div>
@@ -478,8 +478,21 @@ const PROMISES = [
 
 const PLANS: { name: string; price: string; unit?: string; features: string[]; cta: string; featured?: boolean; current?: boolean }[] = [
   { name: 'Free', price: '$0', features: ['Every app, no time limit', 'No watermark up to 1080p and stereo', 'Local AI tools'], cta: 'Current plan', current: true },
-  { name: 'Creator', price: '$9.99', unit: '/month', features: ['Everything unlocked, all resolutions', 'All export presets, HDR delivery', 'Priority support'], cta: 'Choose Creator', featured: true },
-  { name: 'Perpetual', price: '$149.99', unit: ' once', features: ['Own this version forever', 'One year of updates included', 'Works offline, no account needed'], cta: 'Buy once' },
+  {
+    name: 'Creator',
+    price: '$9.99',
+    unit: '/month',
+    features: ['Everything unlocked, all resolutions', 'All export presets, HDR delivery', 'Priority support'],
+    cta: 'Choose Creator',
+    featured: true,
+  },
+  {
+    name: 'Perpetual',
+    price: '$149.99',
+    unit: ' once',
+    features: ['Own this version forever', 'One year of updates included', 'Works offline, no account needed'],
+    cta: 'Buy once',
+  },
   { name: 'Studio', price: '$19.99', unit: '/seat/month', features: ['Shared libraries and review links', 'Team admin and SSO', 'Cloud render (optional)'], cta: 'Contact us' },
 ];
 
@@ -570,8 +583,8 @@ function SettingsTab() {
             <I.Keyboard size={16} /> Keyboard
           </div>
           <p className="muted" style={{ lineHeight: 1.55 }}>
-            Each app keeps its own shortcuts. In {THEMES.video.name}, open Keyboard Shortcuts with <Keys binding="Mod+Alt+K" /> to rebind keys or switch between the Premiere
-            Pro, Final Cut Pro and DaVinci Resolve layouts.
+            Each app keeps its own shortcuts. In {THEMES.video.name}, open Keyboard Shortcuts with <Keys binding="Mod+Alt+K" /> to rebind keys or switch between the Premiere Pro,
+            Final Cut Pro and DaVinci Resolve layouts.
           </p>
         </div>
         <div className="card">

@@ -82,7 +82,15 @@ function ClipAudio() {
     for (const t of seq.tracks) for (const c of t.clips) if (s.selection.clipIds.includes(c.id) && c.kind === 'media') return c.id;
     return null;
   });
-  if (!clipId) return <EmptyState icon={<I.Waveform size={18} />} title="No clip selected" sub="Select an audio clip in the timeline to adjust its gain, pan, EQ and dynamics." testId="sh-clip-audio-empty" />;
+  if (!clipId)
+    return (
+      <EmptyState
+        icon={<I.Waveform size={18} />}
+        title="No clip selected"
+        sub="Select an audio clip in the timeline to adjust its gain, pan, EQ and dynamics."
+        testId="sh-clip-audio-empty"
+      />
+    );
   return <AudioClipSection clipId={clipId} />;
 }
 

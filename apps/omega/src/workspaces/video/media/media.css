@@ -521,23 +521,43 @@
   background: var(--accent);
 }
 .md-row {
+  --row-bg: transparent;
   display: grid;
   grid-template-columns: var(--md-cols);
   align-items: center;
   height: 24px;
   border-bottom: 1px solid var(--border-subtle);
+  background: var(--row-bg);
   color: var(--text);
   cursor: default;
 }
 .md-row:hover {
-  background: var(--hover);
+  --row-bg: var(--hover);
 }
 .md-row.is-selected {
-  background: var(--accent-soft);
+  --row-bg: var(--accent-soft);
 }
 .md-row.is-drop {
-  background: var(--accent-soft);
+  --row-bg: var(--accent-soft);
   box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+/* the name column stays put while the metadata scrolls sideways */
+.md-row > .md-cell--name,
+.md-list__head > .md-th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  align-self: stretch;
+  background: linear-gradient(var(--row-bg, transparent), var(--row-bg, transparent)), var(--surface);
+  box-shadow: 1px 0 0 var(--border-subtle);
+}
+.md-list__head > .md-th:first-child {
+  z-index: 3;
+  background: var(--surface);
+}
+.md-cell--ctl {
+  padding: 0 4px;
+  text-overflow: clip;
 }
 .md-row.is-offline .md-cell__text {
   color: var(--danger);
@@ -591,6 +611,7 @@
 }
 .md-cell--edit {
   padding: 0 4px;
+  text-overflow: clip;
 }
 .md-notes {
   width: 100%;

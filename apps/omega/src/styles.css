@@ -357,7 +357,9 @@ svg {
   background: var(--btn-primary-bg, var(--accent));
   color: var(--btn-primary-fg, var(--accent-fg));
   border-color: transparent;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), var(--shadow-1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    var(--shadow-1);
 }
 .btn--primary:hover:not(:disabled),
 .btn--accent:hover:not(:disabled) {
@@ -520,7 +522,9 @@ svg {
   place-items: center;
   border-radius: 5px;
   color: var(--text-3);
-  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
 }
 .mini:hover:not(:disabled) {
   background: var(--hover);
@@ -695,7 +699,9 @@ svg {
   display: inline-grid;
   place-items: center;
   cursor: pointer;
-  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+  transition:
+    background var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease);
 }
 .checkbox:hover,
 .field input[type='checkbox']:not(.switch):hover {
@@ -757,7 +763,9 @@ svg {
   border-radius: 50%;
   background: #d8d8dc;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-  transition: transform var(--dur-2) var(--ease-out), background var(--dur-2) var(--ease);
+  transition:
+    transform var(--dur-2) var(--ease-out),
+    background var(--dur-2) var(--ease);
 }
 .switch:checked,
 .switch[aria-checked='true'] {
@@ -796,7 +804,9 @@ svg {
   justify-content: center;
   gap: 5px;
   white-space: nowrap;
-  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
   -webkit-app-region: no-drag;
 }
 .seg > button:hover:not(.is-active):not(:disabled),
@@ -809,7 +819,9 @@ svg {
 .seg__btn.is-active {
   background: var(--surface-4);
   color: var(--text);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 .seg--sm > button,
 .seg--sm .seg__btn {
@@ -855,7 +867,9 @@ svg {
   border-radius: 50%;
   background: #e6e6ea;
   border: 0;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 1px 3px rgba(0, 0, 0, 0.5);
   transition: transform var(--dur-1) var(--ease);
 }
 :where(input[type='range']):hover::-webkit-slider-thumb {
@@ -934,7 +948,9 @@ kbd,
   padding: 0 5px;
   border-radius: 4px;
   background: var(--surface-3);
-  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.35), inset 0 0 0 1px var(--border-strong);
+  box-shadow:
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+    inset 0 0 0 1px var(--border-strong);
   font-family: var(--font);
   font-size: var(--fs-2xs);
   font-weight: 500;
@@ -972,7 +988,9 @@ kbd + kbd,
   font-size: var(--fs-xs);
   font-weight: 500;
   line-height: 1.3;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), var(--shadow-2);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    var(--shadow-2);
   animation: tip-in var(--dur-2) var(--ease-out);
 }
 .tooltip kbd {
@@ -1001,7 +1019,9 @@ kbd + kbd,
   padding: 4px;
   border-radius: 8px;
   background: var(--surface-2);
-  box-shadow: 0 0 0 1px var(--border-strong), var(--shadow-2);
+  box-shadow:
+    0 0 0 1px var(--border-strong),
+    var(--shadow-2);
   animation: menu-in var(--dur-2) var(--ease-out);
   outline: none;
 }
@@ -1104,7 +1124,9 @@ kbd + kbd,
   overflow: auto;
   background: var(--surface-2);
   border-radius: var(--radius);
-  box-shadow: 0 0 0 1px var(--border-strong), var(--shadow-3);
+  box-shadow:
+    0 0 0 1px var(--border-strong),
+    var(--shadow-3);
   animation: pop-in var(--dur-3) var(--ease-out);
   user-select: none;
 }
@@ -1212,7 +1234,9 @@ kbd + kbd,
   background: var(--surface-3);
   color: var(--text);
   font-size: var(--fs-md);
-  box-shadow: 0 0 0 1px var(--border-strong), var(--shadow-2);
+  box-shadow:
+    0 0 0 1px var(--border-strong),
+    var(--shadow-2);
   animation: toast-in var(--dur-3) var(--ease-out);
 }
 @keyframes toast-in {
@@ -1777,7 +1801,9 @@ body.is-resizing-h * {
   display: grid;
   place-items: center;
   color: var(--text-3);
-  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
 }
 .titlebar__btn:hover {
   background: var(--hover);
@@ -1918,7 +1944,9 @@ body.is-resizing-h * {
   font-weight: 500;
   text-align: left;
   flex: none;
-  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
 }
 .dash__nav-item:hover {
   background: var(--hover);
@@ -1958,7 +1986,9 @@ body.is-resizing-h * {
   text-align: left;
   background: transparent;
   box-shadow: inset 0 0 0 1px transparent;
-  transition: background var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease);
+  transition:
+    background var(--dur-2) var(--ease),
+    box-shadow var(--dur-2) var(--ease);
 }
 .dash.is-expanded .dash__plan {
   background: var(--surface);
@@ -2129,7 +2159,9 @@ body.is-resizing-h * {
   background: var(--surface);
   box-shadow: inset 0 0 0 1px var(--border);
   text-align: left;
-  transition: box-shadow var(--dur-2) var(--ease), background var(--dur-2) var(--ease);
+  transition:
+    box-shadow var(--dur-2) var(--ease),
+    background var(--dur-2) var(--ease);
 }
 .create-card:hover:not(:disabled) {
   background: var(--surface-2);
@@ -2554,7 +2586,9 @@ body.is-resizing-h * {
   background: var(--surface-2);
   box-shadow: inset 0 0 0 1px var(--border);
   text-align: center;
-  transition: box-shadow var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+  transition:
+    box-shadow var(--dur-1) var(--ease),
+    background var(--dur-1) var(--ease);
 }
 .dest:hover {
   box-shadow: inset 0 0 0 1px var(--border-strong);

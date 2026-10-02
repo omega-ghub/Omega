@@ -102,7 +102,14 @@ interface Ctx {
 }
 
 interface LayerImage {
-  rt: RT;
+  /** Texture to sample: a working render target, or a raw upload on the direct path. */
+  tex: WebGLTexture;
+  tw: number;
+  th: number;
+  /** Render target owned by this image (released after placement); null on the direct path. */
+  rt: RT | null;
+  /** Direct path: `tex` is a raw upload (display-encoded, top row first) decoded while placing. */
+  decode?: { code: number; gamut: Mat3 | null };
   /** Layer size in layer px. */
   w: number;
   h: number;
@@ -162,6 +169,8 @@ export class Renderer {
   private dummy2D: WebGLTexture | null = null;
   private dummy3D: WebGLTexture | null = null;
   private display: RT | null = null;
+  /** Where the last frame was drawn on the canvas (GL coordinates) and the canvas size then. */
+  private lastFrame: { x: number; y: number; w: number; h: number; cw: number; ch: number } | null = null;
   private readTarget: RT | null = null;
   private hasFrame = false;
   private frameNo = 0;
@@ -283,12 +292,25 @@ export class Renderer {
   readPixels(maxWidth = 320): PixelReadback {
     const gl = this.gl;
     if (!gl) return this.readPixels2d(maxWidth);
-    const src = this.display;
-    if (this.lost || gl.isContextLost() || !src || !this.hasFrame) {
+    const lf = this.lastFrame;
+    const valid = !!lf && this.hasFrame && !this.lost && !gl.isContextLost() && lf.cw === this.canvas.width && lf.ch === this.canvas.height;
+    if (!valid || !lf) {
       const w = Math.max(1, Math.min(Math.round(maxWidth), this.canvas.width));
       const h = Math.max(1, Math.round((w / Math.max(1, this.canvas.width)) * this.canvas.height));
       return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
     }
+    const t0 = this.now();
+    // Copy the frame region of the canvas into a texture (the canvas keeps its pixels: preserveDrawingBuffer).
+    if (!this.display || this.display.w !== lf.w || this.display.h !== lf.h) {
+      if (this.display) this.deleteRT(this.display);
+      this.display = this.createRT(lf.w, lf.h, gl.RGBA8);
+    }
+    const src = this.display;
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, src.fbo);
+    gl.blitFramebuffer(lf.x, lf.y, lf.x + lf.w, lf.y + lf.h, 0, 0, lf.w, lf.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
     const w = Math.max(1, Math.min(Math.round(maxWidth), src.w));
     const h = Math.max(1, Math.round((w / src.w) * src.h));
     let target = src;
@@ -316,6 +338,7 @@ export class Renderer {
     const out = new Uint8ClampedArray(w * h * 4);
     const row = w * 4;
     for (let y = 0; y < h; y++) out.set(buf.subarray((h - 1 - y) * row, (h - y) * row), y * row);
+    this.mark('readPixels', t0);
     return { width: w, height: h, data: out };
   }
 
@@ -451,6 +474,7 @@ export class Renderer {
     this.lutGpu.clear();
     this.display = null;
     this.readTarget = null;
+    this.lastFrame = null;
     this.hasFrame = false;
     this.vaoFull = this.vaoQuad = null;
     this.quadBuf = null;
@@ -562,10 +586,15 @@ export class Renderer {
 
   /** Fullscreen pass into `target`. */
   private drawFull(p: Program, target: RT, tex: Record<string, WebGLTexture | null | undefined>, uniforms: () => void, label = 'pass') {
+    this.drawViewport(p, target.fbo, 0, 0, target.w, target.h, tex, uniforms, label);
+  }
+
+  /** Fullscreen pass into a viewport of a framebuffer (null = the canvas). */
+  private drawViewport(p: Program, fbo: WebGLFramebuffer | null, x: number, y: number, w: number, h: number, tex: Record<string, WebGLTexture | null | undefined>, uniforms: () => void, label: string) {
     const gl = this.gl!;
     const t0 = this.now();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
-    gl.viewport(0, 0, target.w, target.h);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.viewport(x, y, w, h);
     gl.disable(gl.BLEND);
     gl.useProgram(p.prog);
     this.bindSamplers(p, tex);
@@ -617,35 +646,25 @@ export class Renderer {
     const split = mode === 'split' && !main.matte ? Math.min(Math.max(opts.compare?.position ?? 0.5, 0), 1) : -1;
     if (split >= 0) before = this.composite(graph, frames, fr.w, fr.h, { bypass: true, matteClipId: null, background: true }, 0).rt;
 
-    if (!this.display || this.display.w !== fr.w || this.display.h !== fr.h) {
-      if (this.display) this.deleteRT(this.display);
-      this.display = this.createRT(fr.w, fr.h, gl.RGBA8);
-    }
     const space = (OUTPUT_CODE[graph.colorSpace as OutputSpace] ?? 0) as number;
     const passthrough = !!main.matte;
     const dither = this.settings.dither;
     const p = this.prog(VS_FULL, variant(`out|${space}|${split >= 0}|${passthrough}|${dither}`, () => outputFragment({ space, split: split >= 0, passthrough, dither })), 'output');
     if (!p) return;
-    this.drawFull(p, this.display, { u_a: (main.matte ?? main.rt).tex, u_b: (before ?? main.rt).tex }, () => {
+    // Output transform straight into the canvas (letterbox bars cleared to black).
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (fr.w !== cw || fr.h !== ch) {
+      gl.viewport(0, 0, cw, ch);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+    const gy = ch - fr.y - fr.h;
+    this.drawViewport(p, null, fr.x, gy, fr.w, fr.h, { u_a: (main.matte ?? main.rt).tex, u_b: (before ?? main.rt).tex }, () => {
       this.u1f(p, 'u_split', split);
       if (space === 2) this.uMat3(p, 'u_toP3', gamutMatrix('rec709', 'p3d65'));
       this.u1f(p, 'u_dither', 0.98);
     }, 'output');
-
-    // Present: letterbox bars, then the frame.
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, cw, ch);
-    if (fr.w !== cw || fr.h !== ch) {
-      gl.clearColor(0, 0, 0, 1);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-    }
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.display.fbo);
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-    const gy = ch - fr.y - fr.h;
-    const tp = this.now();
-    gl.blitFramebuffer(0, 0, fr.w, fr.h, fr.x, gy, fr.x + fr.w, gy + fr.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
-    this.mark('present', tp);
+    this.lastFrame = { x: fr.x, y: gy, w: fr.w, h: fr.h, cw, ch };
     this.hasFrame = true;
   }
 
@@ -769,6 +788,20 @@ export class Renderer {
     const k = workingScale(Math.max(ax * ctx.sx, ay * ctx.sy), w, h, this.maxTex);
     const ww = Math.max(1, Math.round(w * k));
     const wh = Math.max(1, Math.round(h * k));
+    const matte = ctx.matteClipId === layer.clipId;
+    // Direct path: no grade, no effects and no heavy downscale → decode while placing (saves a full pass).
+    if (raw && !matte && !this.gradeNeeded(layer.grade, ctx) && !layer.effects?.length) {
+      const sxp = Math.max(ax * ctx.sx, 1e-6);
+      const syp = Math.max(ay * ctx.sy, 1e-6);
+      if (Math.max(raw.w / w / sxp, raw.h / h / syp) <= 1.5) {
+        if (raw.mips) {
+          const gl = this.gl!;
+          gl.bindTexture(gl.TEXTURE_2D, raw.tex);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        }
+        return { tex: raw.tex, tw: raw.w, th: raw.h, rt: null, decode: { code, gamut }, w, h, m, matte: false };
+      }
+    }
     let rt: RT;
     if (src.kind === 'sequence') {
       if (ctx.depth + 1 > MAX_NEST || !src.graph) return null;
@@ -777,10 +810,14 @@ export class Renderer {
       rt = this.acquire(ww, wh);
       this.inputPass(raw!, rt, code, gamut);
     }
-    const matte = ctx.matteClipId === layer.clipId;
     rt = this.gradePass(rt, layer.grade, ctx, matte);
     if (!matte) rt = this.applyEffects(rt, layer, ww / w, ctx);
-    return { rt, w, h, m, matte };
+    return { tex: rt.tex, tw: rt.w, th: rt.h, rt, w, h, m, matte };
+  }
+
+  private gradeNeeded(g: ColorGrade | null, ctx: Ctx): boolean {
+    if (!g || ctx.bypass) return false;
+    return !gradeIsNeutral(g, !!(g.enabled && g.lut.id && g.lut.intensity !== 0 && getLoadedLut(g.lut.id)));
   }
 
   /** Raw upload → linear premultiplied, downscaled in linear light. */
@@ -1129,10 +1166,17 @@ export class Renderer {
     if (cl + cr >= 1 || ct + cb >= 1) return;
     // masks
     const masks = (layer?.masks ?? []).filter((m) => m && m.enabled !== false).slice(0, MAX_MASKS);
-    const texelsPerPx = img.rt.w / img.w; // texels per layer px
+    const texelsPerPx = img.tw / img.w; // texels per layer px
     const bicubic = minScale / texelsPerPx > BICUBIC_ABOVE;
     const path = adjust ? 'adjust' : shaderBlend ? 'shader' : 'hw';
-    const p = this.prog(VS_QUAD, variant(`place|${masks.length}|${bicubic}|${path}|${mode}`, () => placeFragment({ masks: masks.length, bicubic, blend: path, mode })), 'place');
+    const dec = img.decode;
+    const p = this.prog(
+      VS_QUAD,
+      variant(`place|${masks.length}|${bicubic}|${path}|${mode}|${dec ? dec.code : -1}|${!!dec?.gamut}`, () =>
+        placeFragment({ masks: masks.length, bicubic, blend: path, mode, decode: dec ? { code: dec.code, gamut: !!dec.gamut } : null }),
+      ),
+      'place',
+    );
     if (!p) return;
     let dst: RT | null = null;
     if (shaderBlend) {
@@ -1151,11 +1195,12 @@ export class Renderer {
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
     gl.viewport(0, 0, fw, fh);
     gl.useProgram(p.prog);
-    this.bindSamplers(p, { u_layer: img.rt.tex, u_dst: dst?.tex });
+    this.bindSamplers(p, { u_layer: img.tex, u_dst: dst?.tex });
+    if (dec?.gamut) this.uMat3(p, 'u_gamut', dec.gamut);
     this.u2f(p, 'u_dstSize', fw, fh);
     this.u1f(p, 'u_opacity', Math.min(Math.max(opacity, 0), 1));
     this.u2f(p, 'u_layerPx', img.w, img.h);
-    this.u2f(p, 'u_texSize', img.rt.w, img.rt.h);
+    this.u2f(p, 'u_texSize', img.tw, img.th);
     this.u4f(p, 'u_crop', cl, ct, cr, cb);
     this.u1f(p, 'u_cropFeather', Math.max(num(c?.feather), 0));
     if (masks.length) {
@@ -1186,7 +1231,7 @@ export class Renderer {
 
   /** Places a frame-sized texture (transition result, captions) over `target`. */
   private placeFrame(rt: RT, target: RT, ctx: Ctx, blend: BlendMode) {
-    const img: LayerImage = { rt, w: ctx.graph.width, h: ctx.graph.height, m: AFF_IDENTITY, matte: false };
+    const img: LayerImage = { tex: rt.tex, tw: rt.w, th: rt.h, rt: null, w: ctx.graph.width, h: ctx.graph.height, m: AFF_IDENTITY, matte: false };
     this.place(img, null, target, ctx, blend, 1, false);
   }
 
@@ -1203,7 +1248,7 @@ export class Renderer {
     this.copyRegion(target, rt);
     rt = this.gradePass(rt, layer.grade, ctx, matte);
     if (!matte) rt = this.applyEffects(rt, layer, ctx.sx, ctx);
-    const img: LayerImage = { rt, w: ctx.graph.width, h: ctx.graph.height, m: AFF_IDENTITY, matte };
+    const img: LayerImage = { tex: rt.tex, tw: rt.w, th: rt.h, rt: null, w: ctx.graph.width, h: ctx.graph.height, m: AFF_IDENTITY, matte };
     if (matte) this.place(img, layer, this.matteTarget(ctx), ctx, 'normal', 1, false);
     else this.place(img, layer, target, ctx, layer.blend, layer.opacity, true);
     this.release(rt);

@@ -85,14 +85,14 @@ function itemDuration(item: Obj): number {
     const ar = range(ref?.available_range);
     return ar?.duration ?? 0;
   }
-  if (s === 'Stack') return Math.max(0, ...((item.children ?? []) as Obj[]).map(trackDuration));
+  if (s === 'Stack') return Math.max(0, ...((Array.isArray(item.children) ? item.children : []) as Obj[]).map(trackDuration));
   if (s === 'Track') return trackDuration(item);
   return 0;
 }
 
 function trackDuration(track: Obj): number {
   let d = 0;
-  for (const c of track.children ?? []) if (schemaOf(c) !== 'Transition') d += itemDuration(c);
+  for (const c of Array.isArray(track?.children) ? track.children : []) if (c && typeof c === 'object' && schemaOf(c) !== 'Transition') d += itemDuration(c);
   return d;
 }
 
@@ -162,6 +162,7 @@ function buildTrack(ctx: Ctx, otioTrack: Obj, kind: 'video' | 'audio', name: str
   let pending: { duration: number; type: TransitionType } | null = null;
   let prevWasClip = false;
   for (const child of children) {
+    if (!child || typeof child !== 'object') continue;
     const s = schemaOf(child);
     if (s === 'Transition') {
       const d = seconds(child.in_offset) + seconds(child.out_offset);
@@ -244,7 +245,7 @@ function buildTrack(ctx: Ctx, otioTrack: Obj, kind: 'video' | 'audio', name: str
     }
     if (clip) {
       if (child.enabled === false) clip.enabled = false;
-      for (const fx of child.effects ?? []) {
+      for (const fx of Array.isArray(child.effects) ? child.effects : []) {
         const fs = schemaOf(fx);
         if (fs === 'LinearTimeWarp') {
           const k = Number(fx.time_scalar);
@@ -261,7 +262,7 @@ function buildTrack(ctx: Ctx, otioTrack: Obj, kind: 'video' | 'audio', name: str
         pending = null;
       }
       // Clip-level markers become sequence markers at their timeline position.
-      for (const m of child.markers ?? []) {
+      for (const m of Array.isArray(child.markers) ? child.markers : []) {
         const mr = range(m.marked_range);
         if (!mr) continue;
         markersOut.push(markerFrom(m, clip.start + (mr.start - (sr?.start ?? 0)), mr.duration));
@@ -296,7 +297,8 @@ function buildSequence(ctx: Ctx, stack: Obj, name: string, timeline: Obj | null)
   const markers: ReturnType<typeof makeMarker>[] = [];
   const video: Track[] = [];
   const audio: Track[] = [];
-  for (const t of stack.children ?? []) {
+  for (const t of Array.isArray(stack.children) ? stack.children : []) {
+    if (!t || typeof t !== 'object') continue;
     const s = schemaOf(t);
     if (s === 'Track') {
       const isAudio = String(t.kind ?? 'Video').toLowerCase() === 'audio';
@@ -312,7 +314,7 @@ function buildSequence(ctx: Ctx, stack: Obj, name: string, timeline: Obj | null)
   seq.tracks = [...video.reverse(), ...audio];
   if (!video.length) seq.tracks.unshift(makeTrack('video', 'V1'));
   if (!audio.length) seq.tracks.push(makeTrack('audio', 'A1'));
-  for (const m of stack.markers ?? []) {
+  for (const m of Array.isArray(stack.markers) ? stack.markers : []) {
     const r = range(m.marked_range);
     if (r) markers.push(markerFrom(m, r.start, r.duration));
   }
