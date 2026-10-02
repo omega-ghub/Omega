@@ -218,7 +218,7 @@ function About() {
     <div className="sh-about" data-testid="sh-about">
       <AppMark app="video" size={52} />
       <AppTitle app="video" size="lg" />
-      <p className="sh-about__tag">Edit, grade, mix and deliver. Part of the Omega creative suite.</p>
+      <p className="sh-about__tag">Part of the Omega creative suite.</p>
       <div className="sh-about__facts">
         <div className="row">
           <span className="row__label">Version</span>

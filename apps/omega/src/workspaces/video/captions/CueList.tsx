@@ -6,7 +6,7 @@ import { useEditor } from '../../../state/store';
 import { formatTimecode, fromFrames, parseTimecode, snapToFrame } from '../../../engine/time';
 import { transport } from '../../../engine/playback/transport';
 import { cueIndexAt, cueStats, DEFAULT_RULES, type CueIssue } from '../../../engine/captions';
-import { mutateTrack } from './commands';
+import { mutateTrack, seekToCue } from './commands';
 import { useCaptionsUi } from './uiState';
 import { CI } from './icons';
 
@@ -83,14 +83,20 @@ export function CueList({ track, seq, cues, filter, issues }: Props) {
     if (i < 0) return;
     scrollToRow(i, 'nearest');
     const id = focusCueId;
-    requestAnimationFrame(() => {
+    let tries = 0;
+    let raf = 0;
+    // The row renders after the scroll state update; retry for a few frames.
+    const attempt = () => {
       const ta = ref.current?.querySelector<HTMLTextAreaElement>(`textarea[data-cue="${id}"]`);
       if (ta) {
         ta.focus();
         ta.setSelectionRange(ta.value.length, ta.value.length);
       }
-      useCaptionsUi.getState().set({ focusCueId: null });
-    });
+      if (ta || ++tries > 8) useCaptionsUi.getState().set({ focusCueId: null });
+      else raf = requestAnimationFrame(attempt);
+    };
+    raf = requestAnimationFrame(attempt);
+    return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusCueId, visible]);
 
@@ -122,7 +128,7 @@ export function CueList({ track, seq, cues, filter, issues }: Props) {
     const next = visible[i + dir];
     if (!next) return;
     useEditor.getState().select({ cueIds: [next.id] });
-    if (!useEditor.getState().playing) transport.seek(next.start);
+    if (!useEditor.getState().playing) seekToCue(next);
     useCaptionsUi.getState().set({ focusCueId: next.id });
   };
 
@@ -228,9 +234,9 @@ const CueRow = memo(function CueRow({ cue, index, top, active, selected, issues,
     <div className={cls} style={{ top, height: ROW_H }} role="listitem" data-testid="cap-cue" data-cue-id={cue.id} data-active={active || undefined} onMouseDown={(e) => onSelect(cue, e)}>
       <div className="cap-row__meta">
         <span className="cap-idx">{index + 1}</span>
-        <TimecodeCell value={cue.start} tc={tc} warn={timingWarn} label="In" testid="cap-cue-in" disabled={locked} onCommit={(v) => setEdge('start', v)} />
+        <TimecodeCell value={cue.start} tc={tc} warn={timingWarn} label="In" testid="cap-cue-in" disabled={locked} onSeek={() => seekToCue(cue)} onCommit={(v) => setEdge('start', v)} />
         <span className="cap-arrow">→</span>
-        <TimecodeCell value={cue.end} tc={tc} warn={timingWarn} label="Out" testid="cap-cue-out" disabled={locked} onCommit={(v) => setEdge('end', v)} />
+        <TimecodeCell value={cue.end} tc={tc} warn={timingWarn} label="Out" testid="cap-cue-out" disabled={locked} onSeek={() => transport.seek(cue.end)} onCommit={(v) => setEdge('end', v)} />
         <span className="cap-stat" title="Duration">
           {stats.duration.toFixed(2)}s
         </span>
@@ -269,7 +275,7 @@ const CueRow = memo(function CueRow({ cue, index, top, active, selected, issues,
         onFocus={() => {
           const st = useEditor.getState();
           if (!(st.selection.cueIds.length === 1 && st.selection.cueIds[0] === cue.id)) st.select({ cueIds: [cue.id] });
-          if (!playing && (st.playhead < cue.start - 1e-6 || st.playhead >= cue.end - 1e-6)) transport.seek(cue.start);
+          if (!playing && (st.playhead < cue.start - 1e-6 || st.playhead >= cue.end - 1e-6)) seekToCue(cue);
         }}
         onKeyDown={onKeyDown}
         aria-label={`Caption ${index + 1} text`}
@@ -281,7 +287,7 @@ const CueRow = memo(function CueRow({ cue, index, top, active, selected, issues,
 
 // ---------------------------------------------------------------------------
 
-function TimecodeCell({ value, tc, warn, label, testid, disabled, onCommit }: { value: number; tc: TcFormat; warn: boolean; label: string; testid: string; disabled: boolean; onCommit(v: number): void }) {
+function TimecodeCell({ value, tc, warn, label, testid, disabled, onSeek, onCommit }: { value: number; tc: TcFormat; warn: boolean; label: string; testid: string; disabled: boolean; onSeek(): void; onCommit(v: number): void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const text = formatTimecode(value, tc.fps, tc.df, tc.start);
@@ -321,7 +327,7 @@ function TimecodeCell({ value, tc, warn, label, testid, disabled, onCommit }: { 
       type="button"
       className={`cap-tc${warn ? ' is-warn' : ''}`}
       title={`${label}: click to go there${disabled ? '' : ', double-click to edit'}`}
-      onClick={() => transport.seek(value)}
+      onClick={onSeek}
       onDoubleClick={() => {
         if (disabled) return;
         setDraft(text);

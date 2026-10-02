@@ -469,10 +469,6 @@ kbd.cap-kbd {
   color: var(--text-3);
   cursor: default;
 }
-.cap-menu__item span:last-child {
-  color: var(--text-3);
-  font: 10px var(--mono);
-}
 .cap-menu__sep {
   height: 1px;
   margin: 4px 2px;

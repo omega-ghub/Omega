@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Sequence, Track } from '../../../state/types';
 import { activeSequence } from '../../../state/types';
 import { useEditor } from '../../../state/store';
-import { transport } from '../../../engine/playback/transport';
 import { checkCues, countIssues, findInCues, sortCues } from '../../../engine/captions';
 import { displayKey, keysFor } from '../actions';
 import {
@@ -21,6 +20,7 @@ import {
   openChapters,
   replaceAll,
   resolveTrack,
+  seekToCue,
   setEdgeToPlayhead,
   splitAtPlayhead,
   splitLong,
@@ -87,16 +87,16 @@ function Header({ seq, tracks, track }: { seq: Sequence; tracks: Track[]; track:
     if (!track || !count) return;
     const sorted = sortCues(track.cues).filter((c) => issues.get(c.id)?.length);
     const t = useEditor.getState().playhead;
-    const next = sorted.find((c) => c.start > t + 1e-6) ?? sorted[0];
+    const next = sorted.find((c) => c.start > t + 1e-3) ?? sorted[0];
     if (!next) return;
-    transport.seek(next.start);
+    seekToCue(next);
     useEditor.getState().select({ cueIds: [next.id] });
     useCaptionsUi.getState().set({ tab: 'cues' });
   };
   return (
     <div className="cap-head">
       <span className="cap-title">Captions</span>
-      {track && (
+      {track && track.cues.length > 0 && (
         <button
           type="button"
           className={`cap-issues${count ? '' : ' is-clear'}`}

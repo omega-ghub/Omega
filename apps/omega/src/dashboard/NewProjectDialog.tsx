@@ -88,9 +88,8 @@ export function NewProjectDialog({ app }: { app: AppKind }) {
       <div className="newproj__head">
         <AppMark app={app} size={40} />
         <div>
-          <div className="newproj__eyebrow">{t.category}</div>
           <div className="newproj__title">New {t.name} project</div>
-          <div className="newproj__sub">{t.available ? t.tagline : `${t.name} is planned for ${t.phase}. You can set up the project now; the workspace opens in preview.`}</div>
+          <div className="newproj__sub">{t.available ? t.description : `${t.name} is planned for ${t.phase}. You can set up the project now; the workspace opens in preview.`}</div>
         </div>
         <button className="icon-btn icon-btn--sm newproj__close" onClick={close} aria-label="Close" data-tip="Close" data-tip-keys="Escape">
           <I.Close size={16} />

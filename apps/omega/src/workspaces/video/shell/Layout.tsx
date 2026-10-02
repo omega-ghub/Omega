@@ -48,6 +48,9 @@ const LABEL: Record<PanelId, string> = {
   deliver: 'Deliver',
 };
 
+/** Panels whose package already draws a title row; the shell adds no header. */
+const SELF_HEADED = new Set<PanelId>(['source', 'program', 'media', 'timeline', 'scopes', 'color', 'captions', 'deliver']);
+
 type Column = { tabs: PanelId[] } | { stack: [PanelId, PanelId] };
 
 interface WsDef {
@@ -128,7 +131,7 @@ function useSubtitle(id: PanelId): string | undefined {
 function SinglePanel({ id }: { id: PanelId }) {
   const subtitle = useSubtitle(id);
   return (
-    <Panel id={id} title={LABEL[id]} subtitle={subtitle}>
+    <Panel id={id} title={LABEL[id]} subtitle={subtitle} chromeless={SELF_HEADED.has(id)}>
       {content(id)}
     </Panel>
   );

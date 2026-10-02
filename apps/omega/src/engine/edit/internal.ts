@@ -258,6 +258,7 @@ export function allClips(seq: Sequence): Located[] {
  */
 export function expand(seq: Sequence, ids: Iterable<string>, opts: { links: boolean; groups: boolean; keepLocked?: boolean }): Located[] {
   const want = new Set(ids);
+  if (!want.size) return [];
   const all = allClips(seq);
   if (opts.links || opts.groups) {
     for (let pass = 0; pass < 8; pass++) {
@@ -284,8 +285,14 @@ export function expand(seq: Sequence, ids: Iterable<string>, opts: { links: bool
 
 /** Linked partners of a clip (not including it), on unlocked tracks. */
 export function partnersOf(seq: Sequence, clip: Clip): Located[] {
-  if (!clip.linkId) return [];
-  return allClips(seq).filter((l) => l.clip !== clip && l.clip.linkId === clip.linkId && !l.track.locked);
+  const link = clip.linkId;
+  if (!link) return [];
+  const out: Located[] = [];
+  for (const track of seq.tracks) {
+    if (track.locked) continue;
+    for (const c of track.clips) if (c !== clip && c.linkId === link) out.push({ clip: c, track });
+  }
+  return out;
 }
 
 export function sortedClips(track: Track): Clip[] {
@@ -709,15 +716,28 @@ function sweepOk(iv: Interval[]): boolean {
   return true;
 }
 
+/** Few changed clips: check each against the rest (linear); many: sort and sweep. */
+const LINEAR_LIMIT = 48;
+
 function trackOk(g: Grid, tr: Track, plan: Plan): boolean {
-  const iv: Interval[] = [];
-  for (const c of tr.clips) {
-    const it = plan.get(c);
-    if (it) {
-      if (it.to === tr) iv.push({ s: it.s, e: it.e, ch: true });
-    } else iv.push({ s: startF(g, c), e: endF(g, c), ch: false });
+  const mine: PlanItem[] = [];
+  for (const it of plan.values()) if (it.to === tr) mine.push(it);
+  if (mine.length <= LINEAR_LIMIT) {
+    for (let i = 0; i < mine.length; i++) {
+      const a = mine[i];
+      for (let j = i + 1; j < mine.length; j++) if (a.s < mine[j].e && mine[j].s < a.e) return false;
+    }
+    for (const c of tr.clips) {
+      if (plan.has(c)) continue;
+      const s = startF(g, c);
+      const e = endF(g, c);
+      for (const a of mine) if (a.s < e && s < a.e) return false;
+    }
+    return true;
   }
-  for (const it of plan.values()) if (it.to === tr && it.from !== tr) iv.push({ s: it.s, e: it.e, ch: true });
+  const iv: Interval[] = [];
+  for (const c of tr.clips) if (!plan.has(c)) iv.push({ s: startF(g, c), e: endF(g, c), ch: false });
+  for (const it of mine) iv.push({ s: it.s, e: it.e, ch: true });
   return sweepOk(iv);
 }
 
@@ -755,21 +775,27 @@ export function rippleValid(g: Grid, project: Project | undefined, plan: Plan, t
   const touched = new Set<Track>(shifting);
   for (const it of plan.values()) touched.add(it.to);
   for (const tr of touched) {
-    const iv: Interval[] = [];
+    const moves = !!delta && shifting.has(tr);
+    const mine: PlanItem[] = [];
+    for (const it of plan.values()) if (it.to === tr) mine.push(it);
+    // what stays ends before what moves left (no clip may jump over another)
+    let maxStay = 0;
+    let minMoved = Infinity;
+    for (const it of mine) maxStay = Math.max(maxStay, it.e);
     for (const c of tr.clips) {
-      const it = plan.get(c);
-      if (it) {
-        iv.push({ s: it.s, e: it.e, ch: true });
-        continue;
-      }
-      const s = startF(g, c);
-      const e = endF(g, c);
-      if (delta && shifting.has(tr) && s >= from) {
-        if (s + delta < 0) return false;
-        iv.push({ s: s + delta, e: e + delta, ch: true });
-      } else iv.push({ s, e, ch: false });
+      if (plan.has(c)) continue;
+      let s = startF(g, c);
+      let e = endF(g, c);
+      if (moves && s >= from) {
+        s += delta;
+        e += delta;
+        if (s < 0) return false;
+        minMoved = Math.min(minMoved, s);
+      } else maxStay = Math.max(maxStay, e);
+      for (const a of mine) if (a.s < e && s < a.e) return false;
     }
-    if (!sweepOk(iv)) return false;
+    if (delta < 0 && minMoved < maxStay) return false;
+    for (let i = 0; i < mine.length; i++) for (let j = i + 1; j < mine.length; j++) if (mine[i].s < mine[j].e && mine[j].s < mine[i].e) return false;
   }
   return true;
 }

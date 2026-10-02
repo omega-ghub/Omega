@@ -1,5 +1,5 @@
 // Caption track style: presets, a scaled live preview and every CaptionStyle field.
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { CaptionStyle, Sequence, Track } from '../../../state/types';
 import { defaultCaptionStyle } from '../../../state/defaults';
 import { useEditor } from '../../../state/store';
@@ -231,9 +231,8 @@ function Preview({ style, seq, track }: { style: CaptionStyle; seq: Sequence; tr
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const playhead = useEditor((s) => s.playhead);
-  const sorted = sortCues(track.cues);
-  const at = cueIndexAt(sorted, playhead);
+  const sorted = useMemo(() => sortCues(track.cues), [track.cues]);
+  const at = useEditor((s) => cueIndexAt(sorted, s.playhead));
   const sample = (at >= 0 ? sorted[at].text : sorted[0]?.text) || 'The quick brown fox\njumps over the lazy dog.';
   const aspect = seq.width / Math.max(1, seq.height);
   const maxH = 200;

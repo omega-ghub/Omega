@@ -171,6 +171,10 @@ export class Renderer {
   private curveTex = new Map<string, { tex: WebGLTexture; used: number }>();
   private lutGpu = new Map<string, LutGpu>();
   private warned = new Set<string>();
+  /** Opt-in GPU profiling: when true, every pass is followed by gl.finish() and timed (slow; diagnostics only). */
+  profile = false;
+  /** Per-pass milliseconds of the last frame when `profile` is on. */
+  lastProfile: Record<string, number> = {};
   private maskA = new Float32Array(MAX_MASKS * 4);
   private maskB = new Float32Array(MAX_MASKS * 4);
   private maskC = new Float32Array(MAX_MASKS * 4);
@@ -258,6 +262,7 @@ export class Renderer {
     const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
     this.frameNo++;
     this.pool.frame = this.frameNo;
+    if (this.profile) this.lastProfile = {};
     try {
       this.renderGL(graph, frames, opts);
     } catch (e) {
@@ -300,7 +305,7 @@ export class Renderer {
         this.drawFull(p, target, { u_src: src.tex }, () => {
           this.u2f(p, 'u_foot', 1 / w, 1 / h);
           this.u1i(p, 'u_taps', taps);
-        });
+        }, 'readback');
       }
     }
     const buf = new Uint8Array(w * h * 4);
@@ -487,6 +492,24 @@ export class Renderer {
     return this.programs.get(vs, fs, label);
   }
 
+  private mark(label: string, t0: number) {
+    if (!this.profile) return;
+    // gl.finish() does not block in Chromium; a 1-pixel read does.
+    const gl = this.gl!;
+    const type = gl.getParameter(gl.IMPLEMENTATION_COLOR_READ_TYPE) as number;
+    const fmt = gl.getParameter(gl.IMPLEMENTATION_COLOR_READ_FORMAT) as number;
+    const buf = type === gl.FLOAT ? new Float32Array(4) : type === gl.HALF_FLOAT ? new Uint16Array(4) : new Uint8Array(4);
+    try {
+      gl.readPixels(0, 0, 1, 1, fmt, type, buf);
+    } catch {
+      /* ignore */
+    }
+    this.lastProfile[label] = (this.lastProfile[label] ?? 0) + performance.now() - t0;
+  }
+  private now() {
+    return this.profile ? performance.now() : 0;
+  }
+
   private warnOnce(key: string, msg: string) {
     if (this.warned.has(key)) return;
     this.warned.add(key);
@@ -537,8 +560,9 @@ export class Renderer {
   }
 
   /** Fullscreen pass into `target`. */
-  private drawFull(p: Program, target: RT, tex: Record<string, WebGLTexture | null | undefined>, uniforms: () => void) {
+  private drawFull(p: Program, target: RT, tex: Record<string, WebGLTexture | null | undefined>, uniforms: () => void, label = 'pass') {
     const gl = this.gl!;
+    const t0 = this.now();
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
     gl.viewport(0, 0, target.w, target.h);
     gl.disable(gl.BLEND);
@@ -548,19 +572,23 @@ export class Renderer {
     gl.bindVertexArray(this.vaoFull);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
+    this.mark(label, t0);
   }
 
   private clearRT(rt: RT, r: number, g: number, b: number, a: number) {
     const gl = this.gl!;
+    const t0 = this.now();
     gl.bindFramebuffer(gl.FRAMEBUFFER, rt.fbo);
     gl.viewport(0, 0, rt.w, rt.h);
     gl.clearColor(r, g, b, a);
     gl.clear(gl.COLOR_BUFFER_BIT);
+    this.mark('clear', t0);
   }
 
   /** Copies a region (target px, top-left origin) of `src` into the same place in `dst`. */
   private copyRegion(src: RT, dst: RT, x0 = 0, y0 = 0, x1 = src.w, y1 = src.h) {
     const gl = this.gl!;
+    const t0 = this.now();
     const gy0 = src.h - y1;
     const gy1 = src.h - y0;
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src.fbo);
@@ -568,6 +596,7 @@ export class Renderer {
     gl.blitFramebuffer(x0, gy0, x1, gy1, x0, gy0, x1, gy1, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+    this.mark('copy', t0);
   }
 
   // =========================================================================
@@ -600,7 +629,7 @@ export class Renderer {
       this.uMat3(p, 'u_toP3', gamutMatrix('rec709', 'p3d65'));
       this.u1i(p, 'u_passthrough', main.matte ? 1 : 0);
       this.u1f(p, 'u_dither', this.settings.dither ? 0.98 : 0);
-    });
+    }, 'output');
 
     // Present: letterbox bars, then the frame.
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -612,8 +641,10 @@ export class Renderer {
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.display.fbo);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
     const gy = ch - fr.y - fr.h;
+    const tp = this.now();
     gl.blitFramebuffer(0, 0, fr.w, fr.h, fr.x, gy, fr.x + fr.w, gy + fr.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    this.mark('present', tp);
     this.hasFrame = true;
   }
 
@@ -782,7 +813,7 @@ export class Renderer {
       this.u1i(p, 'u_code', code);
       this.u1i(p, 'u_useGamut', gamut ? 1 : 0);
       if (gamut) this.uMat3(p, 'u_gamut', gamut);
-    });
+    }, 'input');
   }
 
   // =========================================================================
@@ -857,7 +888,7 @@ export class Renderer {
           this.u1i(p, 'u_shW', lg.shaperWidth);
         }
       }
-    });
+    }, 'grade');
     this.release(rt);
     return out;
   }
@@ -1004,7 +1035,7 @@ export class Renderer {
         this.u1f(p, 'u_time', layer.local);
         this.u1f(p, 'u_seed', layer.seed);
         for (const d of def.params) this.setParam(p, d, params[d.key], ctx.space);
-      });
+      }, `fx:${def.type}`);
       if (cur !== orig) this.release(cur);
       cur = out;
     }
@@ -1016,7 +1047,7 @@ export class Renderer {
         this.drawFull(cp, back, { u_src: cur.tex }, () => {
           this.u1i(cp, 'u_taps', 1);
           this.u2f(cp, 'u_foot', 0, 0);
-        });
+        }, 'fx-resize');
       }
       this.release(cur);
       cur = back;
@@ -1064,6 +1095,7 @@ export class Renderer {
    */
   private place(img: LayerImage, layer: Pick<LayerNode, 'crop' | 'masks'> | null, target: RT, ctx: Ctx, blend: BlendMode, opacity: number, adjust: boolean) {
     const gl = this.gl!;
+    const t0 = this.now();
     const p = this.prog(VS_QUAD, FS_PLACE, 'place');
     if (!p) return;
     const fw = target.w;
@@ -1149,6 +1181,7 @@ export class Renderer {
     gl.bindVertexArray(null);
     gl.disable(gl.BLEND);
     this.release(dst);
+    this.mark('place', t0);
   }
 
   /** Places a frame-sized texture (transition result, captions) over `target`. */
@@ -1220,7 +1253,7 @@ export class Renderer {
         if ((d.type === 'number' || d.type === 'angle') && d.unit === 'px') v = num(v) * ctx.sx;
         this.setParam(prog, d, v, ctx.space);
       }
-    });
+    }, 'transition');
     const blend: BlendMode = (node.to && !node.to.adjustment ? node.to.blend : node.from && !node.from.adjustment ? node.from.blend : 'normal') ?? 'normal';
     this.placeFrame(out, target, ctx, blend);
     this.release(out);
@@ -1267,6 +1300,7 @@ export class Renderer {
   /** Uploads any TexImageSource (never closes VideoFrames: the provider owns them). */
   private upload(slot: Slot, src: TexImageSource, w: number, h: number): boolean {
     const gl = this.gl!;
+    const t0 = this.now();
     try {
       gl.bindTexture(gl.TEXTURE_2D, slot.tex);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
@@ -1281,6 +1315,7 @@ export class Renderer {
       slot.mips = false;
       slot.used = this.frameNo;
       this.stats.uploads++;
+      this.mark('upload', t0);
       return true;
     } catch (e) {
       this.warnOnce(`upload-${String(e)}`, `[renderer] texture upload failed (layer skipped): ${e instanceof Error ? e.message : String(e)}`);

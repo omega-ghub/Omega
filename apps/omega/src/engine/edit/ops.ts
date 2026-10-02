@@ -615,8 +615,11 @@ export function slipClip(project: Project, seq: Sequence, clipId: string, source
     const f = locate(seq, clipId);
     if (!f || f.track.locked || !Number.isFinite(sourceDelta)) return 0;
     const parts = participants(seq, f, opts.unlinked);
-    let d = g.T(g.F(sourceDelta));
-    if (!d) return 0;
+    // the dragged clip's new in point lands on the frame grid; partners move by the same amount
+    const hold = f.clip.holdFrame !== null && f.clip.holdFrame !== undefined;
+    const from = hold ? f.clip.holdFrame! : f.clip.inPoint;
+    let d = g.T(g.F(from + sourceDelta)) - from;
+    if (Math.abs(d) < 1e-9) return 0;
     let lo = -Infinity;
     let hi = Infinity;
     for (const p of parts) {

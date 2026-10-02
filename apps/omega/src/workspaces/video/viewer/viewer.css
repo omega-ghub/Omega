@@ -4,37 +4,17 @@
    ========================================================================== */
 
 .vw-monitor {
-  height: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
+  min-width: 0;
+  height: 100%;
   container-type: inline-size;
   --vw-wave: color-mix(in srgb, var(--accent) 70%, white 10%);
 }
-.vw-monitor.is-focused {
-  box-shadow:
-    inset 0 0 0 1px var(--border-subtle),
-    inset 0 1px 0 0 var(--accent-line);
-}
 
-/* ---- header ---- */
-.vw-head {
-  gap: 8px;
-}
-.vw-head__name {
-  min-width: 0;
-  flex: 0 1 auto;
-}
-.vw-head__meta {
-  color: var(--text-3);
-  font-size: var(--fs-xs);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  margin-left: auto;
-  padding-right: 6px;
-}
-.vw-head__actions {
-  gap: 2px;
-  flex: none;
-}
+/* ---- view controls ---- */
 .vw-chip {
   display: inline-flex;
   align-items: center;
@@ -339,27 +319,57 @@
 .vw-transport {
   flex: none;
   border-top: 1px solid var(--border);
-  padding: 0 8px 6px;
+  padding: 2px 8px 4px;
+  background: var(--surface);
 }
 .vw-transport.is-disabled {
   opacity: 0.55;
 }
-.vw-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+.vw-bar {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  min-height: 38px;
+  min-height: 28px;
+  min-width: 0;
 }
-.vw-row__left,
-.vw-row__right {
+.vw-bar__left,
+.vw-bar__right {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
+.vw-bar__left {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+.vw-bar__right {
+  flex: none;
+  gap: 1px;
+}
+.vw-meta {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vw-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+}
+.vw-row__left,
+.vw-row__right {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
 .vw-row__right {
   justify-content: flex-end;
+  gap: 6px;
 }
 .vw-btns {
   display: flex;
@@ -384,9 +394,10 @@
   background: var(--border-strong);
 }
 .vw-tc {
+  flex: none;
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 500;
   letter-spacing: 0.01em;
   color: var(--text);
@@ -609,9 +620,6 @@ button.vw-tc:hover {
   border-radius: 0;
   background: #000;
 }
-.vw-program--full .vw-head {
-  display: none;
-}
 .vw-program--full .vw-stage {
   background: #000;
 }
@@ -636,24 +644,19 @@ button.vw-tc:hover {
 }
 
 /* ---- narrow panels ---- */
-@container (max-width: 720px) {
+@container (max-width: 760px) {
   .vw-readout:nth-child(3) {
     display: none;
   }
 }
-@container (max-width: 600px) {
-  .vw-readouts {
-    display: none;
-  }
-  .vw-head__meta {
+@container (max-width: 640px) {
+  .vw-readouts,
+  .vw-meta {
     display: none;
   }
 }
 @container (max-width: 470px) {
   .vw-btns .vw-opt,
-  .vw-btns .vw-sep {
-    display: none;
-  }
   .vw-meter,
   .vw-fps {
     display: none;

@@ -4,7 +4,7 @@ import type { CaptionCue, CaptionStyle, MediaAsset, Sequence, Track } from '../.
 import { activeSequence, sequenceDuration } from '../../../state/types';
 import { makeTrack } from '../../../state/defaults';
 import { useEditor } from '../../../state/store';
-import { fromFrames, snapToFrame } from '../../../engine/time';
+import { exactRate, fromFrames, snapToFrame } from '../../../engine/time';
 import { transport } from '../../../engine/playback/transport';
 import {
   detectCaptionFormat,
@@ -47,6 +47,19 @@ export function resolveTrack(seq: Sequence | null, trackId: string | null): Trac
 
 export function currentTrack(): Track | null {
   return resolveTrack(getSeq(), useCaptionsUi.getState().trackId);
+}
+
+/** First frame boundary inside the cue (cue times need not be frame-aligned). */
+export function cueSeekTime(cue: CaptionCue, fps: number): number {
+  const r = exactRate(fps);
+  const t = Math.ceil(cue.start * r - 1e-6) / r;
+  return t < cue.end - 1e-9 ? t : cue.start;
+}
+
+/** Moves the playhead onto a cue so it shows in the viewer. */
+export function seekToCue(cue: CaptionCue) {
+  const seq = getSeq();
+  transport.seek(seq ? cueSeekTime(cue, seq.fps) : cue.start);
 }
 
 function toast(message: string, kind: 'info' | 'success' | 'error' = 'info') {
@@ -276,9 +289,11 @@ export function gotoCue(dir: 1 | -1) {
   if (!track || !track.cues.length) return;
   const t = useEditor.getState().playhead;
   const sorted = sortCues(track.cues);
-  const target = dir > 0 ? sorted.find((c) => c.start > t + 1e-6) : [...sorted].reverse().find((c) => c.start < t - 1e-6);
+  const fps = getSeq()?.fps ?? 25;
+  const at = (c: CaptionCue) => cueSeekTime(c, fps);
+  const target = dir > 0 ? sorted.find((c) => at(c) > t + 1e-6) : [...sorted].reverse().find((c) => at(c) < t - 1e-6);
   if (!target) return;
-  transport.seek(target.start);
+  seekToCue(target);
   selectCues([target.id]);
 }
 

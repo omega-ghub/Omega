@@ -50,10 +50,10 @@ export function Dashboard() {
   return (
     <div className={`dash ${expanded ? 'is-expanded' : ''}`}>
       <aside className="dash__side" data-testid="hub-sidebar" aria-label="Omega">
-        <div className="dash__brand" data-tip={expanded ? undefined : 'Omega · Creative Suite'} data-tip-side="right">
+        <div className="dash__brand" data-tip={expanded ? undefined : 'Omega'} data-tip-side="right">
           <OmegaMark size={24} />
           <span className="dash__fade">
-            <AppTitle app="omega" size="sm" />
+            <AppTitle app="omega" size="sm" describe />
           </span>
         </div>
         <nav className="dash__nav">
@@ -145,7 +145,7 @@ function HomeTab() {
             </button>
           </div>
         </div>
-        <OmegaMark size={88} className="hero__mark" />
+        <OmegaMark size={72} className="hero__mark" />
       </section>
 
       <section className="section">
@@ -201,20 +201,21 @@ function CreateCard({ app, onClick }: { app: AppKind; onClick: () => void }) {
   }
   return (
     <button
-      className={`create-card ${t.available ? '' : 'is-planned'}`}
+      className={`create-card ${t.available ? 'is-ready' : 'is-planned'}`}
       onClick={onClick}
       disabled={progress !== undefined}
       data-testid={`hub-create-${app}`}
-      style={{ ['--card-accent' as string]: t.accent, ['--card-soft' as string]: t.accentSoft }}
+      style={{ ['--card-accent' as string]: t.accent }}
     >
-      <AppMark app={app} size={40} />
-      <AppTitle app={app} className="create-card__title" />
-      <div className="create-card__hint">
-        {t.available && installed && progress === undefined && <I.Plus size={13} />}
-        {t.available && !installed && progress === undefined && entry && <I.Download size={13} />}
-        {hint}
-      </div>
-      {t.available && <I.ArrowRight size={15} className="create-card__go" />}
+      <AppMark app={app} size={36} />
+      <span className="create-card__text">
+        <AppTitle app={app} />
+        <span className="create-card__hint">
+          {t.available && installed && progress === undefined && <I.Plus size={12} />}
+          {t.available && !installed && progress === undefined && entry && <I.Download size={12} />}
+          {hint}
+        </span>
+      </span>
     </button>
   );
 }
@@ -223,13 +224,12 @@ function RecentCard({ r }: { r: { path: string; name: string; app: string; modif
   const openProject = useHub((s) => s.launchProject);
   const removeRecent = useHub((s) => s.removeRecent);
   const app = (r.app in THEMES ? r.app : 'video') as AppKind;
-  const t = THEMES[app];
   return (
     <div className="recent-card" onDoubleClick={() => openProject(r.path)} data-testid="hub-recent">
-      <div className="recent-card__thumb" data-format={r.summary} style={{ ['--card-soft' as string]: t.accentSoft }}>
+      <div className="recent-card__thumb" data-format={r.summary}>
         <div className="recent-card__app">
-          <AppMark app={app} size={22} />
-          <AppTitle app={app} size="sm" />
+          <AppMark app={app} size={26} />
+          <AppTitle app={app} />
         </div>
       </div>
       <div className="recent-card__body">
@@ -297,7 +297,6 @@ function AppsTab() {
                     </span>
                   )}
                 </div>
-                <div className="app-row__tag">{t.tagline}</div>
                 {busy && (
                   <div className="progress app-row__progress">
                     <div className="progress__bar">

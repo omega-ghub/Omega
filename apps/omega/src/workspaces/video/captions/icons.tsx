@@ -114,8 +114,9 @@ export const CI = {
   ),
   Follow: make(
     <>
-      <path d="M12 3.5v4M12 16.5v4M3.5 12h4M16.5 12h4" />
-      <circle cx="12" cy="12" r="3" />
+      <path d="M8.5 4h7l-3.5 3.5z" fill="currentColor" />
+      <path d="M12 7.5V20" />
+      <path d="M4.5 12h3M16.5 12h3" />
     </>,
   ),
 };
