@@ -203,6 +203,12 @@ export class AudioEngine {
     return ctx;
   }
 
+  /** Creates the AudioContext and master bus ahead of the first play (no-op when ready). */
+  warmUp(sampleRate?: number): void {
+    if (this.ctx || this.ctxReady) return;
+    void this.context(sampleRate).catch(() => {});
+  }
+
   /** Resume a suspended context (autoplay policy); never blocks for long. */
   async resume(): Promise<void> {
     const ctx = this.ctx;
@@ -262,7 +268,8 @@ export class AudioEngine {
     // Give sources under the playhead a moment to decode so playback starts complete.
     const first = clipsInRange(plan, from, from + 1.5).filter((cp) => !sourceNow(project, cp, sr));
     if (first.length) {
-      await Promise.race([Promise.all(first.map((cp) => resolveSource(project, cp, sr, PRIORITY_PLAYBACK))), new Promise((r) => setTimeout(r, 400))]);
+      // bounded: the viewer falls back to wall time if play() takes too long; late sources join with a fade
+      await Promise.race([Promise.all(first.map((cp) => resolveSource(project, cp, sr, PRIORITY_PLAYBACK))), new Promise((r) => setTimeout(r, 250))]);
       if (token !== this.token) return;
     }
 
@@ -497,6 +504,8 @@ export async function requestPeaks(project: Project, assetId: string): Promise<P
   if (have) return have[0];
   const seq = project.sequences.find((s) => s.id === project.activeSequenceId) ?? project.sequences[0];
   const sr = seq?.sampleRate ?? project.settings.sampleRate ?? 48000;
+  // A timeline with audio is on screen: get the output device ready for the first play.
+  AudioEngine.get().warmUp(sr);
   try {
     const levels = await ensurePeaks(asset, sr);
     return levels?.[0] ?? null;

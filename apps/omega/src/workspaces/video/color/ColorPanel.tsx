@@ -21,7 +21,7 @@ import {
 import { kbd, Select, Slider, SliderRow, ToolButton } from './controls';
 import { CurveEditor } from './CurveEditor';
 import { Gallery } from './Gallery';
-import { clipUnderPlayhead, setGradeParam, useGradeClip, useGradeLocal } from './grade';
+import { clipUnderPlayhead, gradeTargetIds, setGradeParam, useGradeClip, useGradeLocal } from './grade';
 import { effectiveInputTransform, WHEELS } from './gradeOps';
 import { CI } from './icons';
 import { LooksSection } from './LooksSection';
@@ -106,7 +106,7 @@ function ClipGrade({ clip, tab, setTab }: { clip: Clip; tab: Tab; setTab: (t: Ta
   const local = useGradeLocal(clip);
   const viewer = useEditor((s) => s.viewer);
   const clipboard = useEditor((s) => s.gradeClipboard);
-  const targets = useEditor((s) => s.selection.clipIds.length);
+  const targets = useEditor((s) => gradeTargetIds(s).length);
   const project = useEditor((s) => s.project!);
   const reference = useReference();
   const asset = clip.assetId ? project.assets.find((a) => a.id === clip.assetId) : undefined;
