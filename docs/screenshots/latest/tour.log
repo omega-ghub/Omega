@@ -1,23 +1,15 @@
 Downloading Electron binary...
-node:internal/modules/run_main:123
-    triggerUncaughtException(
-    ^
-
-page.screenshot: Protocol error (Page.captureScreenshot): Unable to capture screenshot
-Call log:
-  - taking page screenshot
-  - waiting for fonts to load...
-  - fonts loaded
-
-    at shot (/home/runner/work/Omega/Omega/apps/omega/scripts/screenshots.mjs:16:69)
-    at async file:///home/runner/work/Omega/Omega/apps/omega/scripts/screenshots.mjs:20:1 {
-  log: [
-    '  - taking page screenshot',
-    '  - waiting for fonts to load...',
-    '  - fonts loaded'
-  ],
-  name: 'Error'
-}
-
-Node.js v22.23.3
-exit: 1
+shot 01-hub-home
+shot 02-hub-apps
+shot 03-hub-apps-installed
+shot 04-new-project
+shot 05-delta-empty
+shot 06-delta-imported
+shot 07-delta-edit
+shot 08-1-edit
+shot 08-2-color
+shot 08-3-audio
+shot 08-4-effects
+shot 08-5-captions
+shot 08-6-deliver
+exit: 0
