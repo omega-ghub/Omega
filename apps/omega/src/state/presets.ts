@@ -72,6 +72,8 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   sampleRate: 48000,
   colorSpace: 'rec709',
   matchFirstClip: false,
+  stillDuration: 5,
+  defaultTransitionDuration: 1,
 };
 
 // Export presets: platform-oriented. Bitrates follow the platforms' published

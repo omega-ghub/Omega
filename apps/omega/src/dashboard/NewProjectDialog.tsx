@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AppMark } from '../brand/Logos';
 import { THEMES, type AppKind } from '../brand/themes';
 import { COLOR_SPACES, DEFAULT_SETTINGS, FRAME_RATES, PROJECT_PRESETS, SAMPLE_RATES, aspectLabel, isDropFrameRate } from '../state/presets';
-import { useStore } from '../state/store';
+import { useHub } from '../state/hubStore';
 import type { ProjectSettings } from '../state/types';
 import { I } from '../ui/Icons';
 import { Modal } from '../ui/Modal';
@@ -20,10 +20,10 @@ const DESTINATIONS: { id: Destination; name: string; hint: string; w: number; h:
 
 export function NewProjectDialog({ app }: { app: AppKind }) {
   const t = THEMES[app];
-  const appInfo = useStore((s) => s.appInfo);
-  const close = useStore((s) => s.closeNewProject);
-  const createProject = useStore((s) => s.createProject);
-  const recents = useStore((s) => s.recents);
+  const appInfo = useHub((s) => s.appInfo);
+  const close = useHub((s) => s.closeNewProject);
+  const createProject = useHub((s) => s.createProject);
+  const recents = useHub((s) => s.recents);
 
   const [name, setName] = useState(() => defaultName(app, recents.length));
   const [location, setLocation] = useState(appInfo?.defaultProjectsDir ?? '');
@@ -85,7 +85,8 @@ export function NewProjectDialog({ app }: { app: AppKind }) {
       <div className="newproj__head">
         <AppMark app={app} size={36} />
         <div>
-          <div className="newproj__title">New {t.short} project</div>
+          <div className="newproj__eyebrow">{t.category}</div>
+          <div className="newproj__title">New {t.name} project</div>
           <div className="newproj__sub">{t.available ? t.tagline : `${t.name} is planned for ${t.phase}. You can set up the project now; the workspace opens in preview.`}</div>
         </div>
         <button className="icon-btn newproj__close" onClick={close} aria-label="Close">

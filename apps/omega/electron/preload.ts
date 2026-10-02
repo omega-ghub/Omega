@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { OmegaApi, RecentProject } from './api';
 
 function mediaUrl(filePath: string): string {
@@ -23,11 +23,14 @@ const api: OmegaApi = {
     pickFolder: (defaultPath) => ipcRenderer.invoke('dialog:pickFolder', defaultPath),
     pickProjectFile: () => ipcRenderer.invoke('dialog:pickProjectFile'),
     pickExportPath: (defaultName, extension) => ipcRenderer.invoke('dialog:pickExportPath', defaultName, extension),
+    pickFiles: (title, extensions) => ipcRenderer.invoke('dialog:pickFiles', title, extensions),
+    pickSavePath: (title, defaultName, extension) => ipcRenderer.invoke('dialog:pickSavePath', title, defaultName, extension),
   },
   projects: {
     create: (location, name, json) => ipcRenderer.invoke('project:create', location, name, json),
     save: (filePath, json) => ipcRenderer.invoke('project:save', filePath, json),
     load: (filePath) => ipcRenderer.invoke('project:load', filePath),
+    backup: (filePath, json) => ipcRenderer.invoke('project:backup', filePath, json),
     recents: () => ipcRenderer.invoke('recents:list'),
     addRecent: (entry: RecentProject) => ipcRenderer.invoke('recents:add', entry),
     removeRecent: (path) => ipcRenderer.invoke('recents:remove', path),
@@ -55,6 +58,9 @@ const api: OmegaApi = {
   },
   files: {
     writeBinary: (path, data) => ipcRenderer.invoke('file:writeBinary', path, data),
+    readText: (path) => ipcRenderer.invoke('file:readText', path),
+    writeText: (path, text) => ipcRenderer.invoke('file:writeText', path, text),
+    pathForFile: (file) => webUtils.getPathForFile(file),
     showInFolder: (path) => ipcRenderer.send('file:showInFolder', path),
   },
 };

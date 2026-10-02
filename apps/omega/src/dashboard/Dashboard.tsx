@@ -1,7 +1,7 @@
 import { useMemo, type ReactElement } from 'react';
-import { AppMark, OmegaMark } from '../brand/Logos';
+import { AppMark, AppTitle, OmegaMark } from '../brand/Logos';
 import { THEMES, WORKSPACE_ORDER, type AppKind } from '../brand/themes';
-import { useStore, type DashboardTab } from '../state/store';
+import { useHub, type DashboardTab } from '../state/hubStore';
 import { I } from '../ui/Icons';
 import { formatBytes, timeAgo } from '../ui/format';
 import { SHORTCUTS } from '../workspaces/video/shortcuts';
@@ -16,8 +16,8 @@ const NAV: { id: DashboardTab; label: string; icon: (p: { size?: number }) => Re
 ];
 
 export function Dashboard() {
-  const tab = useStore((s) => s.dashboardTab);
-  const setTab = useStore((s) => s.setDashboardTab);
+  const tab = useHub((s) => s.dashboardTab);
+  const setTab = useHub((s) => s.setDashboardTab);
 
   return (
     <div className="dash">
@@ -67,9 +67,9 @@ function greeting() {
 }
 
 function HomeTab() {
-  const recents = useStore((s) => s.recents);
-  const openNew = useStore((s) => s.startApp);
-  const openProject = useStore((s) => s.launchProject);
+  const recents = useHub((s) => s.recents);
+  const openNew = useHub((s) => s.startApp);
+  const openProject = useHub((s) => s.launchProject);
 
   return (
     <div className="page">
@@ -119,9 +119,9 @@ function HomeTab() {
 
 function CreateCard({ app, onClick }: { app: AppKind; onClick: () => void }) {
   const t = THEMES[app];
-  const installed = useStore((s) => !!s.installed[app]);
-  const entry = useStore((s) => s.catalog.find((m) => m.id === app));
-  const progress = useStore((s) => s.progress[app]);
+  const installed = useHub((s) => !!s.installed[app]);
+  const entry = useHub((s) => s.catalog.find((m) => m.id === app));
+  const progress = useHub((s) => s.progress[app]);
   let hint = t.phase;
   if (t.available) {
     if (progress !== undefined) hint = `Installing… ${Math.round(progress * 100)}%`;
@@ -131,15 +131,15 @@ function CreateCard({ app, onClick }: { app: AppKind; onClick: () => void }) {
   return (
     <button className="create-card" onClick={onClick} disabled={progress !== undefined} style={{ ['--card-accent' as string]: t.accent, ['--card-soft' as string]: t.accentSoft }}>
       <AppMark app={app} size={44} />
-      <div className="create-card__name">{t.short}</div>
+      <AppTitle app={app} className="create-card__title" />
       <div className="create-card__hint">{hint}</div>
     </button>
   );
 }
 
 function RecentCard({ r }: { r: { path: string; name: string; app: string; modifiedAt: number; summary: string } }) {
-  const openProject = useStore((s) => s.launchProject);
-  const removeRecent = useStore((s) => s.removeRecent);
+  const openProject = useHub((s) => s.launchProject);
+  const removeRecent = useHub((s) => s.removeRecent);
   const app = (r.app in THEMES ? r.app : 'video') as AppKind;
   const t = THEMES[app];
   return (
@@ -152,7 +152,7 @@ function RecentCard({ r }: { r: { path: string; name: string; app: string; modif
           {r.name}
         </div>
         <div className="recent-card__meta">
-          {t.short} · {r.summary} · {timeAgo(r.modifiedAt)}
+          {t.name} ({t.category}) · {r.summary} · {timeAgo(r.modifiedAt)}
         </div>
       </div>
       <div className="recent-card__actions">
@@ -168,14 +168,14 @@ function RecentCard({ r }: { r: { path: string; name: string; app: string; modif
 }
 
 function AppsTab() {
-  const startApp = useStore((s) => s.startApp);
-  const catalog = useStore((s) => s.catalog);
-  const catalogError = useStore((s) => s.catalogError);
-  const installed = useStore((s) => s.installed);
-  const progress = useStore((s) => s.progress);
-  const installModule = useStore((s) => s.installModule);
-  const uninstallModule = useStore((s) => s.uninstallModule);
-  const refreshModules = useStore((s) => s.refreshModules);
+  const startApp = useHub((s) => s.startApp);
+  const catalog = useHub((s) => s.catalog);
+  const catalogError = useHub((s) => s.catalogError);
+  const installed = useHub((s) => s.installed);
+  const progress = useHub((s) => s.progress);
+  const installModule = useHub((s) => s.installModule);
+  const uninstallModule = useHub((s) => s.uninstallModule);
+  const refreshModules = useHub((s) => s.refreshModules);
   return (
     <div className="page">
       <h1 className="page__title">Apps</h1>
@@ -203,7 +203,7 @@ function AppsTab() {
               <AppMark app={app} size={56} />
               <div className="app-row__text">
                 <div className="app-row__name">
-                  {t.name}
+                  <AppTitle app={app} size="lg" />
                   {!t.available && <span className="pill">{t.phase}</span>}
                   {inst && <span className="pill pill--accent" style={{ ['--pill' as string]: t.accent }}>Installed · v{inst.version}</span>}
                 </div>
@@ -248,9 +248,9 @@ function AppsTab() {
 }
 
 function ProjectsTab() {
-  const recents = useStore((s) => s.recents);
-  const openProject = useStore((s) => s.launchProject);
-  const removeRecent = useStore((s) => s.removeRecent);
+  const recents = useHub((s) => s.recents);
+  const openProject = useHub((s) => s.launchProject);
+  const removeRecent = useHub((s) => s.removeRecent);
   return (
     <div className="page">
       <div className="section__head">
@@ -284,7 +284,7 @@ function ProjectsTab() {
                   <td className="table__name">
                     <AppMark app={app} size={20} /> {r.name}
                   </td>
-                  <td>{THEMES[app].short}</td>
+                  <td>{THEMES[app].name} <span className="muted">· {THEMES[app].category}</span></td>
                   <td>{r.summary}</td>
                   <td>{timeAgo(r.modifiedAt)}</td>
                   <td className="table__path" title={r.path}>
@@ -320,7 +320,7 @@ function LearnTab() {
   return (
     <div className="page">
       <h1 className="page__title">Learn</h1>
-      <p className="page__sub">Omega ships with a Premiere-compatible keyboard layout, so muscle memory carries over. Here is the Video workspace reference.</p>
+      <p className="page__sub">Delta ships with a Premiere-compatible keyboard layout, so muscle memory carries over. Here is the Delta reference.</p>
       <div className="shortcut-grid">
         {groups.map(([group, items]) => (
           <div className="card" key={group}>
@@ -430,7 +430,7 @@ function PlansTab() {
 }
 
 function SettingsTab() {
-  const appInfo = useStore((s) => s.appInfo);
+  const appInfo = useHub((s) => s.appInfo);
   return (
     <div className="page">
       <h1 className="page__title">Settings</h1>

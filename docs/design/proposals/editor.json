@@ -1,0 +1,335 @@
+{
+ "lens": "Senior broadcast/online editor (15 years Avid, Premiere, Resolve): timeline editing power, trim modes, media management, playback speed and reliability, keyboard-driven workflow, interchange (XML/EDL/OTIO), multicam, nested sequences.",
+ "headline": "Turn Omega Video from a clip-arranger into a cutting room: a frame-integer, keyboard-first NLE with Avid-grade trimming, Premiere-compatible three-point editing, real bins, proxies, hash relink, multicam, nests, persistent undo and OTIO/FCPXML/EDL interchange, all verifiable frame-exactly under Playwright.",
+ "features": [
+  {
+   "name": "Frame-integer time model (rational fps)",
+   "area": "timeline",
+   "description": "Store every clip position, duration, source in-point, marker and in/out as an integer frame count at the sequence rate, with fps as an exact rational ({num:24000,den:1001}). Seconds are derived only at the player/exporter boundary. Eliminates the float drift and 1e-6 epsilons that make 23.976/29.97 edits land a frame off.",
+   "beatsPremiere": "Parity with Avid/Premiere (both are frame-based internally); strictly better than every web/Electron editor, which float. It is the precondition for frame-exact trims, DF timecode and lossless OTIO/EDL export.",
+   "implementation": "In state/types.ts replace Clip.start/duration/inPoint (seconds) with Frames (branded integer) and ProjectSettings.fps with Rational; add a formatVersion 0.2.0 migrator that rounds seconds*fps on load. formatTimecode takes frames directly. Player.seek/exporter convert with frames*den/num. All store.ts mutations become integer arithmetic (remove the 1e-6 guards).",
+   "effortDays": 3,
+   "priority": "must"
+  },
+  {
+   "name": "Canvas timeline with virtualization, real waveforms and filmstrips",
+   "area": "timeline",
+   "description": "Replace the one-DOM-div-per-clip timeline with a canvas renderer that draws only the visible range: lanes, clips, true audio peaks, video filmstrips at high zoom, markers, playhead, sync badges. Target 5,000 clips on 12 tracks at 60 fps scroll/zoom.",
+   "beatsPremiere": "Parity with Premiere/Resolve on capability; the point is that today's DOM timeline will fall over on a real broadcast sequence. Peaks and filmstrips cached on disk so reopening a project is instant, which Premiere's media cache does slowly.",
+   "implementation": "New engine/timelineRenderer.ts (pure TS, no React in the hot path) drawing to one <canvas> per lane layer; hit-testing by binary search over per-track clip arrays sorted by start. Peaks: Worker runs Mediabunny AudioSampleSink, min/max per 256 samples at 4 mip levels, written through a new IPC cache:write to <project>/.omega-cache/peaks/<fingerprint>.bin. Filmstrips: CanvasSink at 160 px height every N seconds into a WebP sprite sheet, same cache. Timeline.tsx keeps React only for toolbar/track headers.",
+   "effortDays": 4,
+   "priority": "must"
+  },
+  {
+   "name": "Full trim toolkit with overwrite/insert drag semantics",
+   "area": "timeline",
+   "description": "Ripple (B), Roll (N), Slip (Y) and Slide (U) tools with live two-up/four-up frames in the Program monitor while dragging; snapping to edges, markers, playhead and in/out. Dragging a clip overwrites by default and inserts (ripples) with Ctrl, instead of today's 'refuse to drop if overlapping'.",
+   "beatsPremiere": "Parity with Premiere's tool set, better than CapCut/Filmora/Clipchamp which have ripple only. The current store refuses any overlapping move (store.ts moveClip returns early on overlap), which no editor will accept.",
+   "implementation": "Extend Tool union in store.ts; add rippleTrim(clipId, edge, deltaFrames), rollEdit(editPoint, delta), slipClip, slideClip, and moveClip(mode:'overwrite'|'insert'). Overwrite truncates/splits underlying clips (reuse splitInSequence); insert shifts all downstream clips on sync-locked tracks. Two-up view: Player.renderFrameAt(frame) into two offscreen canvases composited side by side during the drag.",
+   "effortDays": 4,
+   "priority": "must"
+  },
+  {
+   "name": "Trim Mode with JKL dynamic trimming and loop play",
+   "area": "timeline",
+   "description": "Press T at an edit point to enter Trim Mode: pick A side, B side or both (Avid pink/green rollers), trim with , and . (one frame), Shift for ten, type a number to trim by N frames, and play the edit in a loop with configurable pre/post-roll while J/K/L move the cut point live.",
+   "beatsPremiere": "Premiere has a trim mode but Avid's loop-trim with keyboard rollers is the gold standard editors ask for; nobody in the creator-tier market has it at all.",
+   "implementation": "store.trimMode = {editFrame, trackIds, side}. Player gains loopRange {start,end} and onLoop; dynamic trim commits a rollEdit/rippleTrim on each K stop with coalesced undo. Keyboard handling goes through the keymap engine context 'trim'. Smoke test enters trim mode by keyboard, presses '.' 12 times and asserts the B clip start moved exactly 12 frames.",
+   "effortDays": 3,
+   "priority": "must"
+  },
+  {
+   "name": "Source monitor and three/four-point editing",
+   "area": "monitor",
+   "description": "A Source monitor (second Player in single-asset mode) with its own in/out, scrub bar and waveform. Insert (,), Overwrite (.), Lift (;), Extract ('), Replace edit, Fit-to-fill (four-point, sets clip speed) and backtimed edits (source out + sequence in). Space/JKL apply to whichever monitor has focus.",
+   "beatsPremiere": "Parity with Premiere/Avid three-point editing; absent from every creator editor (CapCut, Clipchamp, Filmora, Descript). Fit-to-fill and backtiming are Avid-level.",
+   "implementation": "store.source = {assetId, inFrame, outFrame, playhead}; SourceMonitor.tsx reuses engine/player.ts with a one-clip synthetic sequence. resolveThreePoint() derives the missing point; insertEdit/overwriteEdit place onto targeted tracks (feature: track patching); lift leaves a gap, extract ripples; fitToFill sets Clip.speed. Panel focus via data-panel attribute and a usePanelFocus hook.",
+   "effortDays": 4,
+   "priority": "must"
+  },
+  {
+   "name": "Source/record track patching, targeting and sync lock",
+   "area": "timeline",
+   "description": "Avid/Premiere-style patch panel in the track headers: source V1/A1/A2 chips patched to destination tracks, track targeting toggles (Ctrl+1..9 video, Ctrl+Shift+1..9 audio), and a per-track Sync Lock so ripple edits shift locked-in-sync tracks even when not targeted. Lock, mute and solo remain separate.",
+   "beatsPremiere": "Parity with Premiere; absent from all creator-tier editors. Sync lock is what prevents music and VO drifting when you ripple V1.",
+   "implementation": "Track gains targeted:boolean, syncLock:boolean, solo:boolean. All ripple-producing commands (rippleTrim, insert, extract, rippleDelete, closeGap) compute the shift and apply it to every clip starting after the edit frame on tracks where syncLock is true. Headers draw patch chips on the canvas timeline header layer; drag-to-repatch.",
+   "effortDays": 2,
+   "priority": "must"
+  },
+  {
+   "name": "Edit-point commands: trim-to-playhead, extend, ripple delete, gaps",
+   "area": "timeline",
+   "description": "Q/W ripple-trim the previous/next edit to the playhead, E extends the selected edit to the playhead (roll), Ctrl+Shift+K adds an edit on all targeted tracks, Shift+Delete ripple-deletes, gaps are selectable objects (click selects the gap, Delete closes it), plus Close All Gaps on a track.",
+   "beatsPremiere": "Parity with Premiere defaults (Q, W, E, Shift+Delete) so Adobe editors' muscle memory works on day one.",
+   "implementation": "Pure store.ts commands over the frame model: findPrevEdit/findNextEdit on targeted tracks, rippleTrim, rollEdit. Gap selection stored as {trackId, startFrame, endFrame} in selection state; the timeline renderer draws a selected gap outline. Registered in the command registry so the keymap can bind them.",
+   "effortDays": 1.5,
+   "priority": "must"
+  },
+  {
+   "name": "Sync groups, out-of-sync badges and linked-selection toggle",
+   "area": "timeline",
+   "description": "Replace linkId with sync groups; show a red '+12' / '-3' frame badge on A/V clips that have drifted out of sync, with Move Into Sync and Slip Into Sync commands. Global Linked Selection toggle; Alt-click temporarily selects one side only.",
+   "beatsPremiere": "Parity with Premiere/Avid out-of-sync indicators; the creator tools silently let audio drift.",
+   "implementation": "Clip.syncGroupId plus syncOrigin (the source frame that was at timeline frame 0 of the group when created). Offset = (clip.start - clip.inPoint) difference between partners, computed in the renderer. moveIntoSync shifts the clip (respecting overlap rules), slipIntoSync changes inPoint. linkedSelection:boolean in store controls selectClips.",
+   "effortDays": 1.5,
+   "priority": "must"
+  },
+  {
+   "name": "Keyboard nudge and navigation set",
+   "area": "workflow",
+   "description": "Alt+\u2190/\u2192 nudge selected clips one frame, Alt+Shift five (configurable 'big nudge'), Alt+\u2191/\u2193 move clips between tracks, \u2191/\u2193 jump to edits on targeted tracks only, Shift+\u2191/\u2193 jump markers, zoom to selection, zoom to in/out, scroll playhead to centre.",
+   "beatsPremiere": "Parity with Premiere/Avid; today \u2191/\u2193 scans every track including untargeted ones.",
+   "implementation": "Commands over the frame model in store.ts; editPoints() filtered by Track.targeted. Nudges reuse moveClip in overwrite mode with collision rules; zoom commands set zoom and scrollLeft on the canvas timeline viewport.",
+   "effortDays": 1,
+   "priority": "must"
+  },
+  {
+   "name": "Multiple sequences and nested sequences with un-nest",
+   "area": "timeline",
+   "description": "A project holds many sequences (tabs in the timeline panel). Nest Selection collapses selected clips into a new sequence placed as one clip; double-click opens it; Un-nest expands it back in place with offsets preserved. Nests render recursively in preview and export.",
+   "beatsPremiere": "Parity with Premiere nesting plus Un-nest, which Premiere does not have natively (FCP has Break Apart). Nests are also how multicam and handoff packages are modelled.",
+   "implementation": "Project.sequences: Sequence[] + activeSequenceId (migrate the single sequence). Clip.kind 'media'|'sequence' with sequenceId. Player and exporter evaluate renderSequence(seq, frame, depth) recursively with depth limit 8 and cycle check at nest time. Audio mix for export recurses the same way with OfflineAudioContext per nest.",
+   "effortDays": 4,
+   "priority": "must"
+  },
+  {
+   "name": "Multicam: sync by timecode, marks or audio, angle viewer, live cutting",
+   "area": "timeline",
+   "description": "Create a multicam clip from selected bin assets; sync by start timecode, in-points, or audio waveform cross-correlation. Angle viewer grid (2x2 to 4x4) in the monitor; during playback press 1-9 to cut to that angle; swap the angle of an existing cut; flatten to ordinary clips.",
+   "beatsPremiere": "Parity with Premiere/Resolve multicam; absent from CapCut, Clipchamp, Shotcut, Descript (podcast-only). Audio sync in a Worker keeps the UI responsive.",
+   "implementation": "MulticamSource {angles:[{assetId, offsetFrames}]} as a bin asset; multicam clip stores angle segments [{fromFrame, angle}]. Audio sync: Worker decodes mono 8 kHz with AudioSampleSink, envelope, radix-2 FFT cross-correlation (~120 lines TS) -> offset. Angle viewer renders N CanvasSink streams at 320 px. Live cut = splitAtPlayhead + set segment angle, coalesced per key press. make-test-media.mjs gains an offset-tone fixture so the smoke test asserts the detected offset within 1 frame.",
+   "effortDays": 5,
+   "priority": "must"
+  },
+  {
+   "name": "Markers: sequence, clip and range markers with chapters export",
+   "area": "timeline",
+   "description": "M adds a marker at the playhead, Shift+M edits label/colour/note/duration, markers on source clips travel with the clip, Markers panel lists and filters them, export as YouTube chapter text, CSV, and into OTIO/FCPXML/XML.",
+   "beatsPremiere": "Parity with Premiere markers; chapter export is a one-click convenience Premiere lacks.",
+   "implementation": "Marker gets frame, durationFrames, note, kind ('standard'|'chapter'|'todo'|'comment'); MediaAsset.markers for source markers. Markers.tsx panel; renderer draws marker flags on the ruler and inside clips. Export writers in interchange/*.",
+   "effortDays": 2,
+   "priority": "must"
+  },
+  {
+   "name": "Match frame, reveal in bin, reveal in timeline",
+   "area": "workflow",
+   "description": "F loads the clip under the playhead into the Source monitor at the exact same source frame with in/out set to the clip bounds; Shift+F reveals the asset in its bin; from the bin, Reveal in Timeline selects every use of that asset.",
+   "beatsPremiere": "Parity with Avid/Premiere match frame; the fastest way to find handles and alternate takes.",
+   "implementation": "store.matchFrame(): find clip at playhead on topmost targeted track, source.assetId = clip.assetId, source.playhead = clip.inPoint + (playhead - clip.start). Bin panel scrolls and highlights by asset id.",
+   "effortDays": 1,
+   "priority": "must"
+  },
+  {
+   "name": "Timecode entry and display modes, sequence start timecode",
+   "area": "monitor",
+   "description": "Timecode fields accept Avid-style right-to-left digit entry (typing 120 means 00:00:01:20), +/- relative offsets (+48 jumps 48 frames), Enter to commit, arrows to nudge. Display modes: record TC, source TC, frames, seconds, feet+frames. Sequence start timecode (01:00:00:00 for broadcast) and a DF/NDF toggle.",
+   "beatsPremiere": "Parity with Avid/Premiere timecode entry; feet+frames and start TC are what broadcast delivery actually requires.",
+   "implementation": "ui/TimecodeField.tsx shared by both monitors and the inspector; parse to frames via the rational fps. Sequence.startTimecodeFrames. formatTimecode already does SMPTE DF; add a mode parameter and feet+frames (16 frames/ft).",
+   "effortDays": 1.5,
+   "priority": "must"
+  },
+  {
+   "name": "JKL shuttle with multi-tap speeds, reverse play and audio scrub",
+   "area": "monitor",
+   "description": "Tap L repeatedly for 1x, 2x, 4x, 8x, 16x; J the same in reverse; K+L / K+J for quarter speed; K+tap steps one frame; audio scrubbing while dragging the playhead with a toggle.",
+   "beatsPremiere": "Parity with Premiere/Avid JKL. Reverse play does not exist in any Chromium-based editor because HTMLVideoElement cannot play backwards; the WebCodecs path makes it possible.",
+   "implementation": "Forward speeds use HTMLVideoElement.playbackRate up to 16 (audio muted above 2x). Reverse: a GOP ring buffer per clip in the frame scheduler (seek to keyframe with EncodedPacketSink.getKeyPacket, decode forward with VideoSampleSink, present backwards), skipping frames above 2x. Scrub audio: play short grains via AudioBufferSourceNode from a cached 16 kHz mono PCM stored next to the peaks cache.",
+   "effortDays": 2.5,
+   "priority": "should"
+  },
+  {
+   "name": "Bins, metadata columns and smart bins",
+   "area": "media",
+   "description": "Hierarchical bins, list view with sortable resizable columns (name, duration, fps, size, codec, start TC, reel, scene/shot/take, good take, notes, keywords), icon view with hover-scrub, multi-select metadata editing, column presets, and smart bins defined by saved metadata queries.",
+   "beatsPremiere": "Parity with Premiere's Project panel; Avid-style logging fields (scene/take/reel/good) that creator tools (CapCut, Clipchamp, Descript) do not have.",
+   "implementation": "Project.bins: Bin[] {id, name, parentId, assetIds}; MediaAsset.metadata with typed fields plus a custom map; SmartBin {query:[{field, op, value}]}. MediaBin.tsx becomes Bins.tsx with a virtualized list (react-window-free: simple windowing over a fixed row height) and a column model persisted in userData via a new IPC prefs:set. Icon hover-scrub reads the filmstrip sprite cache.",
+   "effortDays": 3,
+   "priority": "must"
+  },
+  {
+   "name": "Media probe v2: codec, colour tags, VFR, start timecode, rotation, channels",
+   "area": "media",
+   "description": "Import reads codec string, bit depth, colour primaries/transfer/matrix, rotation and pixel aspect, audio channel count and sample rate, container metadata, start timecode from QuickTime tmcd tracks, and flags variable frame rate with the measured rate range. Probing runs in a worker pool so 500 files do not block the UI.",
+   "beatsPremiere": "Parity with Premiere/Resolve metadata; VFR detection with a conform offer is better than Premiere's silent behaviour that still causes drift complaints.",
+   "implementation": "media/probe.ts: track.getCodecParameterString(), getCodec(), getRotation(), getPixelAspectRatio(), getDecoderConfig().colorSpace, input.getMetadataTags(), computePacketStats(600) for fps variance (VFR if max/min packet interval ratio > 1.05). Start TC: a ~200-line ISOBMFF box walker reads moov via omega-media:// range requests and decodes the tmcd sample. Results cached by fingerprint+mtime.",
+   "effortDays": 2.5,
+   "priority": "must"
+  },
+  {
+   "name": "Audio channel mapping on import (dual mono / stereo / mono mix)",
+   "area": "audio",
+   "description": "Per-asset channel policy: 2-channel camera files land as dual mono on A1/A2 (broadcast convention), music as stereo, with a per-clip channel map and track pan; the same map drives preview and export.",
+   "beatsPremiere": "Parity with Premiere's Audio Channels dialog; no creator editor offers it, and it is why boom/lav mixes get destroyed in those tools.",
+   "implementation": "MediaAsset.audioPolicy; Clip.channelMap: number[]. Preview routes each audio element through AudioContext createMediaElementSource -> ChannelSplitter -> per-channel GainNodes -> StereoPanner (replaces the volume-only path in player.ts). exporter.mixAudio uses the same graph on OfflineAudioContext.",
+   "effortDays": 1.5,
+   "priority": "must"
+  },
+  {
+   "name": "Background proxy generation and proxy/full toggle",
+   "area": "media",
+   "description": "Generate half or quarter-resolution H.264/VP9 proxies in the background with a progress badge per asset, attach/detach, and a Proxy toggle in the monitor; export always uses full-resolution originals. Independent 1/2 and 1/4 preview-resolution switch.",
+   "beatsPremiere": "Parity with Premiere/Resolve proxies; required for 4K/6K/8K cinema sources to play in Chromium.",
+   "implementation": "Worker pool (concurrency 2, paused while playing) running Mediabunny Conversion.init({input: UrlSource(omega-media), video:{width:960, codec: first of getEncodableVideoCodecs, bitrate: QUALITY_LOW}, audio:{codec:'aac'|'opus'}}) with a StreamTarget whose chunks go to main via IPC proxy:append into <project>/.omega-proxies/<fingerprint>.mp4. MediaAsset.proxyPath; player elementFor picks proxy when store.useProxies. A Background Tasks panel shows the shared job queue (proxies, peaks, filmstrips).",
+   "effortDays": 3,
+   "priority": "must"
+  },
+  {
+   "name": "Content-hash relink, consolidate and remove unused",
+   "area": "media",
+   "description": "Every asset gets a content fingerprint; Relink Offline Media scans a chosen folder and matches by fingerprint (then name), relinking whole folders at once. Consolidate copies all used media into <project>/Media and rewrites paths; Remove Unused lists and deletes assets with no clips.",
+   "beatsPremiere": "Better than Premiere, which relinks by name/path and routinely goes 'media offline' after a move; the research doc lists this as a top frustration.",
+   "implementation": "Fingerprint = SHA-256 (crypto.subtle) of first 1 MiB + last 1 MiB + size, computed in the probe worker. New IPC media:scanFolder (recursive walk with extension filter, streamed results) and media:copy with progress. Relink dialog in Bins; openProject's existing offline check seeds the list.",
+   "effortDays": 3,
+   "priority": "should"
+  },
+  {
+   "name": "Subclips, image sequences and OS drag-and-drop import",
+   "area": "media",
+   "description": "Make Subclip from source in/out (bin entry restricted to those bounds), detect numbered PNG/JPEG/WebP sequences as one asset at a chosen fps, and accept files dragged from Finder/Explorer onto bins or the timeline.",
+   "beatsPremiere": "Parity with Premiere; image sequences are table stakes for VFX/animation handoffs.",
+   "implementation": "MediaAsset.kind 'subclip' with parentAssetId/inFrame/outFrame; sequence detection groups files matching /(.*?)(\\d{3,})\\.(png|jpe?g|webp)$/ with contiguous numbers; an ImageSequenceReader with LRU decode cache feeds player and exporter. Preload exposes webUtils.getPathForFile for drops.",
+   "effortDays": 2,
+   "priority": "should"
+  },
+  {
+   "name": "Command-based undo with History panel and persistent history",
+   "area": "workflow",
+   "description": "Replace whole-sequence snapshots with a log of small inverse operations; drags coalesce into one entry; a History panel lists named steps and lets you jump back to any; history is saved inside the project so undo survives reopening.",
+   "beatsPremiere": "Premiere's History panel is session-only; persistent history across sessions beats it. Snapshots of a 5,000-clip sequence x200 steps would also exhaust memory today.",
+   "implementation": "state/history.ts: Command {id,label,forward:Op[],inverse:Op[],coalesceKey}; ~12 ops (setClipField, insertClip, removeClip, moveClip, setTrackField, addMarker, ...) applied by applyOp; mutateSequence replaced by command builders. Serialize the last 500 commands into the .omega JSON under history (ADR-0002). This refactor lands first because every other feature writes commands.",
+   "effortDays": 3,
+   "priority": "must"
+  },
+  {
+   "name": "Autosave backups, versions and crash recovery",
+   "area": "workflow",
+   "description": "Stop overwriting the user's saved file every 5 s: autosave goes to a sidecar, every explicit save rotates a timestamped backup (keep last 20 plus hourly for a day), and a Restore dialog lists versions. On open, a newer autosave is offered for recovery.",
+   "beatsPremiere": "Parity with Premiere auto-save; the current behaviour (ModuleApp.tsx saves over the real file) can destroy a known-good save.",
+   "implementation": "electron/main.ts project:save gains {backup:true} that copies the existing file to <dir>/.omega-backups/<name>.<ISO>.omega before atomicWrite; project:autosave writes <name>.autosave.omega; project:listBackups and project:restore IPCs; openProject compares mtimes.",
+   "effortDays": 1.5,
+   "priority": "must"
+  },
+  {
+   "name": "Keymap engine with Premiere, Avid, Resolve and FCP presets",
+   "area": "workflow",
+   "description": "Every command is registered with an id, label and focus context; bindings are fully rebindable with chords and modifiers, resolved per focused panel; presets for Premiere, Avid, Resolve, FCP and Omega; a searchable Keyboard Shortcuts editor with a visual keyboard, conflict detection and JSON import/export.",
+   "beatsPremiere": "Parity with Premiere's editor plus the four preset keymaps the research doc calls P1; the Learn page shortcut table becomes live data instead of a static list.",
+   "implementation": "state/commands.ts registry; state/keymap.ts with presets as JSON in src/keymaps/; useShortcuts.ts becomes a dispatcher (normalise KeyboardEvent to 'Ctrl+Shift+K', look up by context chain trim > timeline > global). Bindings stored in userData via prefs IPC; dashboard SHORTCUTS generated from the active keymap.",
+   "effortDays": 3,
+   "priority": "must"
+  },
+  {
+   "name": "Command palette and timeline clip search",
+   "area": "workflow",
+   "description": "Ctrl+Shift+P opens a fuzzy-searchable palette of every command (bound or not) showing its binding; a ':' prefix searches clip names in the sequence and jumps/selects.",
+   "beatsPremiere": "Absent from Premiere, Resolve and Avid; the fastest discoverability path for a keyboard-first app.",
+   "implementation": "ui/CommandPalette.tsx over the command registry with a subsequence scorer; clip search walks the active sequence and uses selectClips plus zoomToSelection.",
+   "effortDays": 1.5,
+   "priority": "should"
+  },
+  {
+   "name": "OpenTimelineIO import and export",
+   "area": "workflow",
+   "description": "Export the project (all sequences, tracks, clips, gaps, markers, nests, transitions, media references with paths and fingerprints) as OTIO JSON, and import OTIO from Resolve, Kdenlive and pipeline tools. Round-trips losslessly thanks to the integer frame model.",
+   "beatsPremiere": "Better than Premiere, which has no native OTIO; parity with Resolve.",
+   "implementation": "interchange/otio.ts writing schema objects (Timeline.1, Stack.1, Track.1, Clip.2, Gap.1, Marker.2, Transition.1, ExternalReference.1, RationalTime.1 with rate from the rational fps). Nests become nested Stacks. Import reconstructs tracks from gaps and clips; round-trip deep-equal test in the smoke suite.",
+   "effortDays": 2,
+   "priority": "must"
+  },
+  {
+   "name": "FCPXML 1.11 import and export",
+   "area": "workflow",
+   "description": "Export sequences as FCPXML (resources, formats, assets, project/sequence/spine with connected clips on lanes, markers, DF/NDF) and import FCPXML from Final Cut, Resolve and LumaFusion with lane-to-track mapping.",
+   "beatsPremiere": "Parity with Premiere (which imports/exports FCPXML) and the most common exchange format for creator tools.",
+   "implementation": "interchange/fcpxml.ts: V1 becomes the spine, other video tracks positive lanes, audio tracks negative lanes; times as rational strings ('3003/30000s'); on import, lanes are flattened back to tracks by lane number and connected-clip offsets resolved against their spine anchor. Document the connected-clip semantic differences in a fixture test.",
+   "effortDays": 3,
+   "priority": "must"
+  },
+  {
+   "name": "Premiere Pro XML (xmeml v5) import and export",
+   "area": "workflow",
+   "description": "Read and write the FCP7-style XML that Premiere, Resolve and many tools exchange: sequences, tracks, clipitems with rate/timebase/ntsc, file references, A/V links and markers, so Adobe users can bring old cuts in and send cuts to colourists.",
+   "beatsPremiere": "Parity with Premiere's own XML; this is the migration on-ramp the Adobe research calls for.",
+   "implementation": "interchange/xmeml.ts with a tiny XML builder/parser (DOMParser is available in the renderer): <xmeml version=\"5\"><sequence><rate><timebase>24</timebase><ntsc>TRUE</ntsc>, <clipitem start/end/in/out in frames>, <file pathurl=\"file://localhost/...\">, <link> for sync groups, <marker>. Golden-file tests against a Premiere-exported sample.",
+   "effortDays": 2.5,
+   "priority": "should"
+  },
+  {
+   "name": "CMX 3600 EDL export/import and ALE bin export",
+   "area": "workflow",
+   "description": "Export a CMX 3600 EDL per video track (reel names from metadata, FROM CLIP NAME comments, dissolves as D events, DF/NDF), import EDLs and conform them against the bin by reel/timecode, and export bin metadata as an Avid ALE file.",
+   "beatsPremiere": "Parity with Premiere EDL; ALE export is something only Avid does, and it is what post houses ask for.",
+   "implementation": "interchange/edl.ts: event lines 'NNN  REEL  V  C  srcIn srcOut recIn recOut' using the sequence start timecode and formatTimecode; reel = asset.metadata.reel || first 8 chars of the filename. Import parses events into clips with offline placeholders when no reel matches. interchange/ale.ts writes the tab-delimited Heading/Column/Data sections.",
+   "effortDays": 1.5,
+   "priority": "must"
+  },
+  {
+   "name": "Handoff package with burn-ins and audio stems",
+   "area": "export",
+   "description": "One-click 'Handoff' export: a reference H.264 with burned-in record TC, source TC + clip name, sequence name and optional markers; a 48 kHz 24-bit WAV stem per audio track; EDL, OTIO, FCPXML and markers CSV, all in one folder for the colourist and sound mixer. Burn-in options are also available on any export.",
+   "beatsPremiere": "Premiere needs several exports and a plugin to get this; Resolve needs a Fairlight pass. Nobody in the creator tier does it.",
+   "implementation": "exporter.ts gains a burnIn overlay step (canvas text at chosen corners) and a stems mode: per audio track an OfflineAudioContext render muxed with Mediabunny WavOutputFormat + AudioBufferSource(codec:'pcm-s24'). ExportDialog adds the Handoff preset that runs the interchange writers into the same folder via IPC file:writeBinary.",
+   "effortDays": 2.5,
+   "priority": "should"
+  },
+  {
+   "name": "Playback engine v2: audio-driven master clock, WebCodecs frame scheduler, dropped-frame meter",
+   "area": "monitor",
+   "description": "Replace per-clip HTMLVideoElements with a frame scheduler: the master clock is AudioContext time, each active video clip has a worker-side decoder prefetching a ring of frames, presentation picks the exact frame index, and the monitor shows dropped frames, decode latency and the active quality (Full/1/2/1/4/Proxy) with automatic degradation. Falls back to the element path when WebCodecs cannot decode a codec.",
+   "beatsPremiere": "Parity with how Premiere/Resolve schedule frames; it is the difference between 'a video player' and an NLE that holds sync for an hour-long programme. Reverse play and frame-exact scrubbing depend on it.",
+   "implementation": "engine/scheduler.ts + engine/frameFetcher.worker.ts using Mediabunny VideoSampleSink.samples(start,end) with transferable VideoFrames (ring of 12), keyframe-aware seeks via EncodedPacketSink.getKeyPacket, and an audio graph from the channel-mapping feature as the clock. Monitor overlay reads scheduler stats; degrade by lowering CanvasSink width. SwiftShader smoke uses the H.264/VP9 fixtures.",
+   "effortDays": 5,
+   "priority": "must"
+  },
+  {
+   "name": "Render in-to-out and render cache with render bar",
+   "area": "monitor",
+   "description": "Enter renders the in/out range (or the whole sequence) to a disk cache keyed by the hash of the clip stack per segment; a red/yellow/green bar above the ruler shows what is cached; playback prefers cached frames and edits invalidate only the touched segments.",
+   "beatsPremiere": "Parity with Premiere's render bar; makes heavy stacks and nests play in real time on modest machines.",
+   "implementation": "Reuse exporter's frame loop to write a VP9/H.264 segment per contiguous stack hash into <project>/.omega-cache/render/<seqId>/; the scheduler checks the cache map before decoding sources; hashes are recomputed from command ops so invalidation is incremental.",
+   "effortDays": 3,
+   "priority": "could"
+  },
+  {
+   "name": "Default transitions with handle checking",
+   "area": "timeline",
+   "description": "Ctrl+D applies the default video transition (cross dissolve, dip to black) and Ctrl+Shift+D the audio crossfade to selected edit points; the app checks source handles and shortens or refuses with a clear message instead of silently repeating frames; transitions are trimmable and exported to EDL/XML/OTIO.",
+   "beatsPremiere": "Parity with Premiere; handle validation is stricter than Premiere's 'insufficient media' freeze-frame behaviour.",
+   "implementation": "Transition {editPoint, type, durationFrames, alignment} stored on the track; validation uses inPoint and asset duration minus (inPoint + duration); player and exporter blend two renderFrameAt results with alpha; trim toolkit treats transition edges as edit points.",
+   "effortDays": 2,
+   "priority": "should"
+  },
+  {
+   "name": "Mixed frame-rate conform and interpret footage",
+   "area": "media",
+   "description": "Clips at a different rate than the sequence map nearest-frame to the timeline with a badge; Interpret Footage lets you play 59.94 at 23.976 (slow motion) or declare a mis-tagged file's true rate; progressive only.",
+   "beatsPremiere": "Parity with Premiere's Interpret Footage, which most creator tools lack and which is essential for phone and action-cam material.",
+   "implementation": "MediaAsset.fps as Rational plus optional interpretFps; source frame = floor(seqFrame * srcFps/seqFps) in the scheduler and exporter; the bin shows a mismatch badge and the Interpret dialog edits the asset.",
+   "effortDays": 1.5,
+   "priority": "should"
+  },
+  {
+   "name": "Editorial test harness: synthetic project, frame-exact assertions, interchange golden files",
+   "area": "workflow",
+   "description": "A generator for a broadcast-sized test project (5,000 clips, 12 tracks, DF timecode, markers, nests, multicam), Playwright steps that drive trims, three-point edits, nesting and multicam switching purely by keyboard and assert exact frame results, round-trip tests for OTIO/FCPXML/XML/EDL against golden files, and a timeline render budget check under SwiftShader.",
+   "beatsPremiere": "No competitor ships its editorial behaviour as a public, automated contract; it is how ten engineers can work in parallel without breaking each other.",
+   "implementation": "scripts/make-test-project.mjs; smoke builds expose window.__omega (store and command dispatch) behind an env flag; scripts/smoke.mjs gains editorial steps and tests/golden/*.otio|fcpxml|xml|edl; performance.measure around timelineRenderer.draw with a 16 ms budget at 5,000 clips.",
+   "effortDays": 2,
+   "priority": "must"
+  }
+ ],
+ "uiDirection": "Layout follows the cutting-room convention editors already carry in their hands: Source monitor top-left, Program monitor top-right, Bins bottom-left, Timeline bottom-right, with a narrow vertical tool strip (V, B, N, Y, U, C, track-select) on the timeline's left edge and the audio meters on its right. Five saved workspaces sit in the header as plain text tabs (Edit, Trim, Multicam, Logging, Deliver); they are real layouts with resizable splitters, not toasts. Panel focus is shown by a 1 px accent outline inside the panel border so you always know which monitor Space will drive.\n\nSurfaces go reference-monitor neutral: pure grey ramps (#0f0f10, #161617, #1d1d1f, #26262a) with no blue cast, because the frame in the Program monitor must be judged against neutral surroundings; the only saturated colour on screen is the workspace accent, used sparingly for the playhead, selection and the active tool. Clip colours become muted, desaturated label tints assigned per bin (slate, olive, plum, sand, teal) with the clip name in 11 px white and a thin source-timecode readout at high zoom. Waveforms are mid-grey filled peaks, filmstrips appear only above a zoom threshold, and the whole timeline is drawn on canvas with 1 px hairlines, no drop shadows, no gradients, no rounded clip corners larger than 2 px.\n\nIcons: a new monoline set on a 20 px grid, 1.5 px stroke, square caps, optically centred, no filled shapes except the play triangle and record dot. The editorial glyph language is consistent: edit points are vertical ticks, trim rollers are the Avid pink (A side) and green (B side) brackets, sync lock is a small chain link, patching chips are 14 px rounded rectangles with the track name. Transport and tool icons share stroke weight with the track-header glyphs so nothing looks borrowed.\n\nTypography: Inter for UI at 12/13 px, JetBrains Mono tabular figures for every timecode, duration and frame count; timecode fields are editable in place with a subtle underline on focus. Density has two settings, Compact (24 px track headers, 18 px rows in bins) and Comfortable, defaulting to Compact for the Edit workspace.\n\nA persistent 22 px status bar runs along the bottom: dropped frames, playback quality (Full/1/2/1/4/Proxy), background jobs (proxies, peaks), last autosave time, active keymap preset, and the sequence's rate and start timecode. Every button tooltip shows its current binding, and the command palette is the discoverability path, so the chrome can stay quiet: no labelled buttons in the timeline toolbar beyond the tool strip, snap, linked selection and sync-lock-all.",
+ "cinemaGrade": "From the editorial side, cinema grade means the cut is frame-exact and survives the journey to finishing. Concretely: (1) an integer-frame, rational-fps timebase so 23.976/29.97/59.94 DF material never lands a frame off and every export of the timeline (OTIO, FCPXML, XML, EDL) is lossless; (2) sequence start timecode, DF/NDF and source timecode read from the camera files' tmcd tracks, so an EDL conforms in Resolve or Avid; (3) 4K/6K/8K camera originals (H.264/HEVC 10-bit/AV1 where WebCodecs can decode them) cut via background proxies at full real-time, with the exporter always returning to the originals and carrying the probed colour primaries/transfer/matrix into the encoder config and the container colr tags; (4) an audio-clock-driven frame scheduler with a dropped-frame meter, so a 90-minute programme holds sync and the editor knows when it did not; (5) dual-mono/stereo channel mapping, 48 kHz 24-bit stems and a burned-in reference, because the picture lock has to go to a mixer and a colourist, and since Chromium cannot encode ProRes the Handoff package (ref + stems + EDL/OTIO/FCPXML) is the honest route to a cinema finish rather than pretending to deliver a master; (6) multicam, nests, hash relink, persistent undo and rotating backups so a real multi-day cut can be trusted, reopened and reconstructed.",
+ "risks": [
+  "Effort: the must-set totals roughly 70 engineer-days, so with ten engineers it is seven to eight working days, not 'a few'; the frame-integer model and command-based undo are foundations that must land in the first two days before the others can proceed in parallel, and if time runs short cut Multicam live-cutting, the render cache and Premiere XML first.",
+  "Chromium under Xvfb/SwiftShader has no hardware decoders, so HEVC (hardware-only in WebCodecs) and 10-bit paths cannot be exercised in the smoke test; CI must use the H.264/VP9 fixtures and HEVC support must be gated by canDecode at runtime with a clear 'make proxies' prompt.",
+  "Reverse playback and JKL above 2x through WebCodecs keep a VideoFrame ring per active clip; VideoFrames are GPU/pinned memory and must be closed deterministically or the renderer will exhaust memory on long sessions.",
+  "FCPXML's connected-clip/spine model and Premiere's xmeml variants do not map one-to-one onto free tracks; expect semantic edge cases (negative lanes, compound clips, retimed clips) and ship with documented limitations plus golden-file tests rather than claiming full fidelity.",
+  "Multicam audio sync by cross-correlation can lock onto room echo or music beds; offer timecode and mark-based sync first and show the correlation confidence so the editor can override.",
+  "The sandboxed renderer cannot write files directly, so proxies, peaks and render cache stream through IPC chunks; throughput and back-pressure need measuring on Windows where small-chunk IPC is slowest.",
+  "HTMLVideoElement fallback paths (when a codec cannot be decoded by WebCodecs) will not be frame-accurate under the new scheduler; the UI must mark such clips and the exporter must still use Mediabunny decode.",
+  "Rebindable keymaps can collide with Electron menu accelerators and OS shortcuts (Ctrl+W, Cmd+Q); the keymap engine needs a reserved-key list per platform.",
+  "No ProRes/DNxHR encode in Chromium means 'master' exports remain H.264/HEVC/AV1; the Handoff package is the mitigation, and marketing copy must not promise mezzanine delivery.",
+  "Content-hash relink reads 2 MiB per file; on network volumes with thousands of assets the first scan is slow and should be throttled and resumable."
+ ]
+}

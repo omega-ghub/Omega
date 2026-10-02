@@ -1607,3 +1607,48 @@ input[type='range'] {
   opacity: 0.8;
   cursor: progress;
 }
+
+.wordmark__cat {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+/* app name with its category label above it */
+.app-title {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.1;
+  gap: 3px;
+}
+.app-title__cat {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.app-title__name {
+  font-weight: 650;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.app-title--sm .app-title__name {
+  font-size: 13px;
+}
+.app-title--sm .app-title__cat {
+  font-size: 9px;
+}
+.app-title--lg .app-title__name {
+  font-size: 17px;
+}
+.create-card__title {
+  margin-top: 4px;
+}
+.newproj__eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}

@@ -1,14 +1,10 @@
 import { useEffect, useState } from 'react';
+import type { AppKind } from '../brand/themes';
 import { AppMark } from '../brand/Logos';
-import { THEMES } from '../brand/themes';
-import { useStore } from '../state/store';
 import { I } from './Icons';
 
-export function TitleBar() {
-  const appInfo = useStore((s) => s.appInfo);
-  const project = useStore((s) => s.project);
-  const view = useStore((s) => s.view);
-  const dirty = useStore((s) => s.dirty);
+/** Frameless-window title bar shared by the hub and every app. */
+export function TitleBar({ app = 'omega', title, platform, children }: { app?: AppKind; title: string; platform?: string; children?: React.ReactNode }) {
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
@@ -16,17 +12,15 @@ export function TitleBar() {
     return window.omega.window.onMaximizedChange(setMaximized);
   }, []);
 
-  const app = view === 'workspace' && project ? project.app : 'omega';
-  const title = view === 'workspace' && project ? `${project.name}${dirty ? ' •' : ''} — ${THEMES[app].name}` : 'Omega';
-  const mac = appInfo?.platform === 'darwin';
-
+  const mac = platform === 'darwin';
   return (
-    <div className={`titlebar ${mac ? 'titlebar--mac' : ''}`}>
+    <div className={`titlebar ${mac ? 'titlebar--mac' : ''}`} onDoubleClick={(e) => e.target === e.currentTarget && window.omega.window.toggleMaximize()}>
       <div className="titlebar__left">
-        <AppMark app={app} size={18} />
+        <AppMark app={app} size={16} />
         <span className="titlebar__title">{title}</span>
       </div>
-      {appInfo?.customTitleBar && !mac && (
+      <div className="titlebar__center">{children}</div>
+      {!mac && (
         <div className="titlebar__controls">
           <button className="titlebar__btn" onClick={() => window.omega.window.minimize()} aria-label="Minimize">
             <I.Minimize size={14} />

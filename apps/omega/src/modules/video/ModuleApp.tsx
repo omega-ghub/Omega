@@ -1,15 +1,13 @@
 import { useEffect, useState } from 'react';
-import { useStore } from '../../state/store';
-import { TitleBar } from '../../ui/TitleBar';
-import { VideoWorkspace } from '../../workspaces/video/VideoWorkspace';
+import { useEditor } from '../../state/store';
+import { VideoWorkspace } from '../../workspaces/video/shell';
 
-// Entry point of the downloadable Omega Video app. The hub opens this in its
-// own window with ?project=<path to .omega file>.
+// Entry point of the downloadable Delta (video) app. The hub opens this in
+// its own window with ?project=<path to .omega file>. OWNED BY CORE.
 export function ModuleApp() {
-  const init = useStore((s) => s.init);
-  const openProject = useStore((s) => s.openProject);
-  const project = useStore((s) => s.project);
-  const toast = useStore((s) => s.toast);
+  const init = useEditor((s) => s.init);
+  const openProject = useEditor((s) => s.openProject);
+  const project = useEditor((s) => s.project);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -18,26 +16,30 @@ export function ModuleApp() {
       const path = new URLSearchParams(location.search).get('project');
       if (!path) throw new Error('No project was specified.');
       await openProject(path);
-      if (!useStore.getState().project) throw new Error('That project could not be opened.');
     })().catch((e: Error) => setError(e.message));
   }, [init, openProject]);
 
-  // Autosave: a few seconds after any change, so closing the window never loses work.
+  // Autosave a few seconds after any change, so closing the window never loses work.
   useEffect(() => {
     const id = setInterval(() => {
-      const s = useStore.getState();
-      if (s.project && s.dirty && !s.playing) void s.saveProject();
-    }, 5_000);
-    return () => clearInterval(id);
+      const s = useEditor.getState();
+      if (s.project && s.dirty && !s.playing && !s.saving) void s.saveProject();
+    }, 4_000);
+    const beforeUnload = () => {
+      const s = useEditor.getState();
+      if (s.project && s.dirty) void s.saveProject();
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('beforeunload', beforeUnload);
+    };
   }, []);
 
+  if (project) return <VideoWorkspace />;
   return (
-    <div className="app">
-      <TitleBar />
-      <div className="app__body">
-        {project ? <VideoWorkspace /> : <div className="soon">{error ? <div className="error">{error}</div> : <div className="muted">Opening project…</div>}</div>}
-      </div>
-      {toast && <div className="toast">{toast}</div>}
+    <div className="boot-screen">
+      {error ? <div className="boot-screen__error">{error}</div> : <div className="boot-screen__spinner" aria-label="Opening project" />}
     </div>
   );
 }

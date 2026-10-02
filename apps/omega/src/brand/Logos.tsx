@@ -1,9 +1,10 @@
 // Omega logo family.
 //
-// The master mark is the Ω "keyhole": a white disc with a round cut-out and a
-// slot running down to the feet. Every workspace mark keeps the same disc and
-// feet, but the cut-out carries a glyph for that workspace. Together they read
-// as one family at a glance, and each one stands alone in a dock or taskbar.
+// The suite mark is the red Ω tile. Each app mark is a dark tile tinted with
+// the app's color, a hairline accent border, and the app's Greek letter
+// drawn as a rune: straight carved strokes, no font dependency, identical on
+// every OS. Like Adobe's Pr / Ps tiles, the rune is the recognizable part, and
+// the UI always shows the category ("Video") next to the name.
 
 import type { AppKind } from './themes';
 import { THEMES } from './themes';
@@ -15,115 +16,90 @@ export interface MarkProps {
   title?: string;
 }
 
-/** The master Omega mark, reproduced from the brand logo (red square, white Ω keyhole). */
+/** The master Omega mark, reproduced from the brand logo (red tile, white Ω keyhole). */
 export function OmegaMark({ size = 32, rounded = true, className, title = 'Omega' }: MarkProps) {
-  const r = rounded ? 180 : 0;
+  const r = rounded ? 200 : 0;
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 1000 1000"
-      className={className}
-      role="img"
-      aria-label={title}
-    >
+    <svg width={size} height={size} viewBox="0 0 1000 1000" className={className} role="img" aria-label={title}>
       <rect width="1000" height="1000" rx={r} fill="#FF0000" />
-      <OmegaGlyph fill="#fff" cut="#FF0000" />
+      <g fill="#fff">
+        <circle cx="500" cy="500" r="244" />
+        <rect x="256" y="648" width="488" height="100" />
+      </g>
+      <circle cx="500" cy="508" r="92" fill="#FF0000" />
+      <rect x="469" y="508" width="62" height="240" fill="#FF0000" />
     </svg>
   );
 }
 
-/**
- * The bare Ω keyhole shape (disc + feet with the cut-out), used by every mark.
- * `cut` is the background color that shows through the keyhole.
- */
-function OmegaGlyph({ fill, cut, children }: { fill: string; cut: string; children?: React.ReactNode }) {
-  return (
-    <g>
-      {/* disc */}
-      <circle cx="500" cy="500" r="244" fill={fill} />
-      {/* feet */}
-      <rect x="256" y="648" width="488" height="100" fill={fill} />
-      {/* keyhole cut-out: round opening + slot down through the feet */}
-      {children ?? (
-        <>
-          <circle cx="500" cy="508" r="92" fill={cut} />
-          <rect x="469" y="508" width="62" height="240" fill={cut} />
-        </>
-      )}
-    </g>
-  );
-}
-
-/** Workspace marks: same construction, with a glyph in the keyhole. */
+/** App marks: tinted tile + accent border + Greek letter. */
 export function AppMark({ app, size = 32, rounded = true, className }: MarkProps & { app: AppKind }) {
   if (app === 'omega') return <OmegaMark size={size} rounded={rounded} className={className} />;
   const t = THEMES[app];
-  const r = rounded ? 180 : 0;
+  const r = rounded ? 200 : 0;
+  const gid = `mark-${app}-${size}`;
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 1000 1000"
-      className={className}
-      role="img"
-      aria-label={t.name}
-    >
+    <svg width={size} height={size} viewBox="0 0 1000 1000" className={className} role="img" aria-label={`${t.name} — ${t.category}`}>
       <defs>
-        <linearGradient id={`mark-${app}`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor={t.accent} />
-          <stop offset="1" stopColor={t.accentDeep} />
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={t.tile} />
+          <stop offset="1" stopColor="#07070a" />
         </linearGradient>
       </defs>
-      <rect width="1000" height="1000" rx={r} fill={`url(#mark-${app})`} />
-      <OmegaGlyph fill="#fff" cut={t.accent}>
-        <rect x="469" y="560" width="62" height="188" fill={t.accentDeep} opacity="0.9" />
-        <AppGlyph app={app} color={t.accentDeep} />
-      </OmegaGlyph>
+      <rect width="1000" height="1000" rx={r} fill={`url(#${gid})`} />
+      <rect x="16" y="16" width="968" height="968" rx={Math.max(0, r - 16)} fill="none" stroke={t.accent} strokeOpacity="0.85" strokeWidth="32" />
+      <Letter app={app} color={t.accent} />
     </svg>
   );
 }
 
-/** The glyph that sits inside the disc for each workspace. Centered on (500, 500). */
-function AppGlyph({ app, color }: { app: AppKind; color: string }) {
+const STROKE = 84;
+
+/**
+ * The app runes: each Greek letter rebuilt from straight, carved strokes —
+ * no curves, crossing strokes overshoot slightly like chiselled staves.
+ */
+function Letter({ app, color }: { app: AppKind; color: string }) {
+  const common = { fill: 'none', stroke: color, strokeWidth: STROKE, strokeLinejoin: 'miter' as const, strokeLinecap: 'butt' as const, strokeMiterlimit: 12 };
   switch (app) {
     case 'video':
-      // play triangle
-      return <path d="M430 400 L612 500 L430 600 Z" fill={color} />;
-    case 'audio':
-      // waveform bars
+      // Δ  Delta — two staves meeting at a point, cut by an overshooting base
       return (
-        <g fill={color}>
-          <rect x="392" y="470" width="34" height="60" rx="17" />
-          <rect x="446" y="420" width="34" height="160" rx="17" />
-          <rect x="500" y="380" width="34" height="240" rx="17" />
-          <rect x="554" y="440" width="34" height="120" rx="17" />
+        <g {...common}>
+          <path d="M262 742 L500 262 L738 742" />
+          <path d="M214 742 H786" />
         </g>
       );
     case 'image':
-      // aperture ring
+      // Φ  Phi — a full stave through a diamond
       return (
-        <g fill="none" stroke={color} strokeWidth="46" strokeLinecap="round">
-          <circle cx="500" cy="500" r="92" />
-          <path d="M500 350 V300 M500 650 V700 M350 500 H300 M650 500 H700" />
+        <g {...common}>
+          <path d="M500 214 V786" />
+          <path d="M500 330 L676 500 L500 670 L324 500 Z" />
+        </g>
+      );
+    case 'audio':
+      // λ  Lambda — a hooked long stave and a short leg
+      return (
+        <g {...common}>
+          <path d="M292 256 H376 L708 760" />
+          <path d="M540 506 L320 760" />
         </g>
       );
     case 'three':
-      // isometric cube
+      // Θ  Theta — a tall six-sided ring with a bar
       return (
-        <g fill={color}>
-          <path d="M500 380 L612 445 L500 510 L388 445 Z" />
-          <path d="M388 445 L500 510 L500 640 L388 575 Z" opacity="0.75" />
-          <path d="M612 445 L500 510 L500 640 L612 575 Z" opacity="0.55" />
+        <g {...common}>
+          <path d="M500 234 L686 352 V648 L500 766 L314 648 V352 Z" />
+          <path d="M314 500 H686" />
         </g>
       );
     case 'motion':
-      // keyframe diamond with a motion path
+      // τ  Tau — a bar and a stave with a kicked foot
       return (
-        <g fill={color}>
-          <path d="M500 390 L600 500 L500 610 L400 500 Z" />
-          <circle cx="360" cy="420" r="26" opacity="0.6" />
-          <circle cx="640" cy="580" r="26" opacity="0.6" />
+        <g {...common}>
+          <path d="M248 332 H752" />
+          <path d="M500 332 V640 L604 744 H690" />
         </g>
       );
     default:
@@ -131,14 +107,29 @@ function AppGlyph({ app, color }: { app: AppKind; color: string }) {
   }
 }
 
-/** Wordmark: the mark plus "Omega" in the brand type. */
-export function OmegaWordmark({ size = 28, app = 'omega' }: { size?: number; app?: AppKind }) {
+/**
+ * App name with its category as a small label above it ("VIDEO" over
+ * "Delta"), so the rune never has to explain itself.
+ */
+export function AppTitle({ app, size = 'md', className = '' }: { app: AppKind; size?: 'sm' | 'md' | 'lg'; className?: string }) {
+  const t = THEMES[app];
+  return (
+    <span className={`app-title app-title--${size} ${className}`}>
+      <span className="app-title__cat">{t.category}</span>
+      <span className="app-title__name">{t.name}</span>
+    </span>
+  );
+}
+
+/** Mark plus product name (and optional category). */
+export function OmegaWordmark({ size = 28, app = 'omega', withCategory = false }: { size?: number; app?: AppKind; withCategory?: boolean }) {
   const t = THEMES[app];
   return (
     <span className="wordmark" style={{ gap: size * 0.4 }}>
       <AppMark app={app} size={size} />
       <span className="wordmark__text" style={{ fontSize: size * 0.72 }}>
         {t.name}
+        {withCategory && <span className="wordmark__cat"> {t.category}</span>}
       </span>
     </span>
   );

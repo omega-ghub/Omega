@@ -1,0 +1,336 @@
+{
+ "lens": "Feature-film colorist: color science, scopes, grading tools, node grading, pipeline color management, delivery",
+ "headline": "Replace the 8-bit 2D-canvas compositor with a scene-linear, float16 WebGL2 render graph that carries 10-bit log and HDR footage from decode to delivery untouched, and build on it a Resolve-class color page (nodes, wheels, curves, qualifiers, windows, tracker, scopes, LUT I/O, CDL/EXR interchange) that Premiere's Lumetri cannot match and that is fully verifiable under SwiftShader.",
+ "features": [
+  {
+   "name": "Scene-linear GPU render graph (Omega Color Engine core)",
+   "area": "color",
+   "description": "Replaces src/engine/player.ts's 2D-canvas compositing with a WebGL2 pass graph: every clip is decoded into a texture, converted by an Input Transform into a scene-linear float16 working space (ACEScg-style AP1 primaries by default; Linear Rec.2020/709 selectable), graded, composited, then converted by an Output Transform to the 8-bit preview canvas. The same graph instance renders the Monitor and the exporter's OffscreenCanvas so what you see is what you deliver.",
+   "beatsPremiere": "Premiere's Lumetri works in display-referred Rec.709 by default and its 'linear color' is an option buried in sequence settings; Resolve requires RCM or ACES setup. Omega is scene-linear always, with no mode switch, across the whole suite (VISION: one engine).",
+   "implementation": "New src/engine/gl/{context,pass,fbo,shaderlib}.ts: a Pass = {program, uniforms, inputs[]} executed with ping-pong RGBA16F framebuffers (EXT_color_buffer_float, fallback EXT_color_buffer_half_float; both exist in SwiftShader). src/engine/color/spaces.ts holds 3x3 primaries matrices and transfer functions as both TS and GLSL strings (single source, string-templated into shaders). Player and exporter become thin drivers of RenderGraph.render(time, target).",
+   "effortDays": 5,
+   "priority": "must"
+  },
+  {
+   "name": "10-bit and HDR-aware decode path",
+   "area": "media",
+   "description": "Decodes with Mediabunny VideoSampleSink instead of HTMLVideoElement; for I420P10/I420P12/P010 samples the raw planes are uploaded as R16UI textures and converted YUV\u2192RGB in a shader using the track's matrix (BT.709/BT.2020-NCL/BT.601) and range (limited/full), so 10-bit precision survives into the float working space. 8-bit samples use VideoSample.toVideoFrame()\u2192texImage2D.",
+   "beatsPremiere": "Parity with Premiere/Resolve Studio on precision; Resolve Free is 8-bit-limited on some paths. Unlike HTMLVideoElement, Chromium's own (uncontrolled) colour conversion is bypassed entirely.",
+   "implementation": "src/engine/media/frameSource.ts: per-clip VideoSampleSink with a 2-frame lookahead ring (like ClipFrameReader in exporter.ts); VideoSample.copyTo(buf,{format}) \u2192 gl.texImage2D(R16UI) per plane; shader yuv.glsl selects matrix from VideoSampleColorSpace. Use VideoDecoder hardwareAcceleration:'prefer-software' for 10-bit tracks when hardware frames come back 8-bit (detect via sample.format). Audio keeps the existing WebAudio path.",
+   "effortDays": 3,
+   "priority": "must"
+  },
+  {
+   "name": "Camera log Input Transform library (IDT)",
+   "area": "color",
+   "description": "Per-clip input colour space with 20+ analytic transforms: ARRI LogC3 (EI800) and LogC4 / AWG3 & AWG4, Sony S-Log2/S-Log3 with S-Gamut3 & S-Gamut3.Cine, Panasonic V-Log/V-Gamut, Canon C-Log2/C-Log3 with Cinema Gamut, RED Log3G10/RWG, Blackmagic Film Gen 5, Apple Log, DJI D-Log, Fujifilm F-Log/F-Log2, Nikon N-Log, GoPro Protune, plus Rec.709 (BT.1886 and camera 'scene' variants), sRGB, Display P3, Rec.2100 PQ and HLG. Each is an exact published curve, not a LUT.",
+   "beatsPremiere": "Premiere ships a fixed set of 'input LUTs' (interpolated 3D LUTs, with banding); Omega's are closed-form, lossless, and expose EI/white-point parameters. More formats than FCP; parity with Resolve.",
+   "implementation": "src/engine/color/idt/*.ts: each transform = {toLinear(x): GLSL + TS twin, primariesMatrix: number[9]}. Composed at shader-build time into one 'idt' pass: linearize \u2192 3x3 to working primaries. Registry keyed by id stored in Clip.colorSpace (new field in state/types.ts). TS twins power the conformance tests and the CPU LUT baker.",
+   "effortDays": 3,
+   "priority": "must"
+  },
+  {
+   "name": "Output Transforms with tone mapping and gamut compression (ODT)",
+   "area": "color",
+   "description": "Working-space \u2192 display transforms for Rec.709 (BT.1886 2.4), sRGB, Display P3, Rec.2100 PQ (selectable 1000/2000/4000-nit mastering), and HLG (1000-nit, system gamma from peak), each with a filmic tone curve (ACES-1.3-style fitted SSTS curve) and ACES 1.3 Reference Gamut Compression so saturated LEDs/lasers roll off instead of clipping. HDR\u2192SDR and SDR\u2192HDR mapping included so an HDR timeline can be viewed and delivered as SDR correctly.",
+   "beatsPremiere": "Premiere's HDR\u2192SDR is a single checkbox with no gamut handling; this exposes the mastering peak, the tone-curve knee and the RGC parameters, and the identical shader runs in preview and export.",
+   "implementation": "src/engine/color/odt.ts (GLSL+TS): rgc.glsl (public ACES 1.3 RGC algorithm), tonemap.glsl (parametric SSTS), eotf/oetf for PQ (ST 2084), HLG (BT.2100 incl. OOTF), 2.4, sRGB. ProjectSettings gains outputTransform; export job gets its own. Exposed in the Color Management panel (feature 35).",
+   "effortDays": 3,
+   "priority": "must"
+  },
+  {
+   "name": "Automatic colour tagging on import",
+   "area": "media",
+   "description": "On import, each asset is tagged with primaries/transfer/matrix/range from container metadata via Mediabunny InputVideoTrack.getColorSpace() and hasHighDynamicRange(), then refined by filename/camera heuristics (e.g. '_LogC', 'SLog3', .braw-like naming, Apple Log MOV tags) and a histogram sanity check (log footage has a tell-tale narrow midtone hump). Untagged footage shows a non-modal 'Looks like S-Log3 \u2014 apply?' banner in the Inspector.",
+   "beatsPremiere": "Premiere auto-applies Log LUTs only for a few cameras and silently gets Apple Log/HLG wrong; Resolve needs manual Input Color Space per clip. The banner follows the VISION rule of inline, non-blocking mismatch handling.",
+   "implementation": "Extend src/media/probe.ts to read colorSpace + hdr flags into MediaAsset.color {primaries, transfer, matrix, fullRange, hdr, guessedIdt, confidence}. Heuristics in src/media/colorGuess.ts (pure TS, unit-tested). Store action applyIdtToAsset(assetId, idt) ripples to all clips of that asset.",
+   "effortDays": 1,
+   "priority": "must"
+  },
+  {
+   "name": "Blue-noise dithered 8-bit preview",
+   "area": "monitor",
+   "description": "The final ODT pass adds a 64x64 blue-noise dither (\u00b10.5 LSB) before quantising float output to the 8-bit canvas, so 10-bit gradients and sky ramps show no banding in the viewer. Toggleable; off during pixel-probe reads.",
+   "beatsPremiere": "Premiere's program monitor shows 8-bit banding on 10-bit sources; Resolve has no preview dither either. Cheap and visibly 'cinema' on consumer displays.",
+   "implementation": "Precomputed blue-noise PNG (16 KB) embedded as data URL, bound as R8 texture tiled by gl_FragCoord; one line in odt.glsl. Golden-image test asserts mean error < 0.5 LSB and no step > 1 LSB on a 0\u21921 ramp.",
+   "effortDays": 0.5,
+   "priority": "should"
+  },
+  {
+   "name": "GPU scopes: waveform, RGB parade, vectorscope, histogram, CIE chromaticity",
+   "area": "color",
+   "description": "Five dockable scopes computed on the GPU from the graded (or any node's) image: luma/RGB/YCbCr waveform with IRE, code value (10-bit) or nits scale; RGB parade; vectorscope with 75%/100% targets, skin-tone line and 2x zoom; RGB+luma histogram; and a CIE 1931 xy chromaticity scope with Rec.709/P3/Rec.2020 gamut triangles. Scopes read the tap point before or after the ODT.",
+   "beatsPremiere": "Lumetri Scopes are CPU, laggy and lack a CIE scope and a nits scale; Resolve's are Studio-grade \u2014 this matches them and adds per-node tapping.",
+   "implementation": "src/engine/scopes/*.ts: downscale tap to 480x270 RGBA16F; for each scope draw W*H points via gl_VertexID + texelFetch with additive blending into an R32F accumulation texture (works on SwiftShader), then a tone pass to the scope canvas. Readback only for histogram stats text (async with gl.fenceSync + PBO). Rendered at 30 Hz max, skipped while scrubbing fast.",
+   "effortDays": 4,
+   "priority": "must"
+  },
+  {
+   "name": "Primary grading: wheels, log wheels, temperature/tint, contrast/pivot",
+   "area": "color",
+   "description": "Lift/Gamma/Gain/Offset wheels with per-channel and master dials, Log wheels (Shadow/Midtone/Highlight with low/high range pivots), Contrast with pivot, Saturation, Hue rotation, Color Boost (saturation of desaturated pixels), Shadows/Highlights recovery. Temperature/Tint is done as a real Bradford chromatic adaptation of the working-space white point, so it behaves like changing the camera's WB, not a tint overlay.",
+   "beatsPremiere": "Premiere's 'Temperature' is a channel multiplier that shifts hue of skin; Bradford CAT and log wheels with pivots are Resolve features Premiere lacks. All ops run in scene-linear light.",
+   "implementation": "primaries.glsl with ~24 uniforms; a single pass per node. Wheel widget in src/workspaces/video/color/Wheel.tsx (canvas-drawn, pointer-captured, fine mode with Shift, double-click reset). Params in Grade node 'primaries'. Bradford matrices in spaces.ts.",
+   "effortDays": 3,
+   "priority": "must"
+  },
+  {
+   "name": "Curves suite",
+   "area": "color",
+   "description": "Custom curves (RGB master + per channel + luma, with monotone-cubic interpolation and histogram backdrop), and the six hue/sat/luma curves: Hue vs Hue, Hue vs Sat, Hue vs Lum, Lum vs Sat, Sat vs Sat, Sat vs Lum. Curves can be set by picking from the viewer (eyedropper adds a control point at the sampled value).",
+   "beatsPremiere": "Premiere has RGB and Hue-Sat curves but no Lum vs Sat / Sat vs Sat and no viewer-pick; this matches Resolve's set and lets curves be applied at any node.",
+   "implementation": "Each curve bakes to a 1024-entry R16F 1D LUT texture (cheap re-bake on drag); curves.glsl samples them. The HSV-ish curves operate in a hue-linear perceptual space (Oklch) to avoid the 'hue skew' of HSL. Curve editor in color/CurveEditor.tsx with SVG paths.",
+   "effortDays": 3,
+   "priority": "must"
+  },
+  {
+   "name": "HSL and 3D qualifier with matte finesse",
+   "area": "color",
+   "description": "Secondary colour keyer: pick/add/subtract hue, saturation, luminance ranges with low/high softness; a 3D (RGB-cluster) mode where you scribble on the viewer and the keyer builds a tolerance volume; matte finesse (pre-filter, clean black/white, blur, shrink/grow, post-filter) and matte views (highlight, high-contrast B/W, alpha).",
+   "beatsPremiere": "Lumetri's HSL Secondary has no 3D key, no shrink/grow, and cannot be fed to a different node; this matches Resolve's Qualifier and feeds any node mask.",
+   "implementation": "qualifier.glsl writes an R8 matte texture; morphology/blur passes are separable 1D shaders. 3D key = set of picked colours in Oklab with radius; shader does min-distance test (<=32 samples). Matte is a named texture input to the node's grade pass (alpha mixes graded vs. input).",
+   "effortDays": 4,
+   "priority": "must"
+  },
+  {
+   "name": "Power windows (shapes, bezier, gradient) with softness and combination",
+   "area": "color",
+   "description": "Ellipse, rectangle, polygon, free-form bezier and linear-gradient windows drawn directly on the viewer with handles; inside/outside softness, feather, opacity, invert; multiple windows per node combined with add/subtract/intersect; windows can be intersected with the qualifier matte.",
+   "beatsPremiere": "Premiere requires the Effects panel's mask tools, which are not colour-aware and cannot be combined; this is Resolve's Window palette.",
+   "implementation": "windows.glsl computes signed distance to the shape (analytic for ellipse/rect, polygon via edge loop, bezier flattened to \u2264256 segments uploaded as a texture) and smoothstep for softness, into the same R8 matte. Handles overlay = SVG layer above the Monitor canvas in viewer-normalised coordinates.",
+   "effortDays": 3,
+   "priority": "must"
+  },
+  {
+   "name": "Point and patch tracker for windows and effects",
+   "area": "color",
+   "description": "Track a window (or any animatable 2D param) forward/backward: a pyramidal Lucas-Kanade tracker with NCC re-detection follows 1-4 user-placed points in downscaled luma; translation, scale and rotation are solved from the points and written as keyframes on the window. Also used for the shot-match sampler and for sticking titles.",
+   "beatsPremiere": "Premiere's mask tracker is single-mask, slow, and not reusable; Resolve's cloud tracker is the bar. Ours exposes the keyframes it generates so they can be edited.",
+   "implementation": "src/engine/track/lk.ts in a Web Worker: luma pyramid (Float32Array) from a 320px-wide readback per frame (the frame source already decodes sequentially); 3-level LK with 7x7 window, max 20 iterations; similarity transform via least squares. Playwright test tracks a synthetic moving square and checks RMS error < 1 px.",
+   "effortDays": 5,
+   "priority": "should"
+  },
+  {
+   "name": "Node-based grading per clip, per group and per timeline",
+   "area": "color",
+   "description": "Each clip has a grade graph: serial nodes, parallel nodes (averaged), layer mixer (blend modes, opacity), outside node (inverted matte of the previous node), key mixer, and splitter/combiner (grade per channel). Nodes carry a label, bypass, and masks. Pre-clip and post-clip group grades and a timeline-level node apply to many clips at once. Any node can be the scopes tap or the viewer source.",
+   "beatsPremiere": "Premiere has a flat effect stack per clip; FCP has stacked corrections. Only Resolve has nodes, and Omega adds node graphs at the group and timeline level with the same editor.",
+   "implementation": "state/types.ts: Clip.grade: GradeGraph {nodes: GradeNode[], edges}, Sequence.gradeGraph, GradeGroup[]. Topological evaluation into Pass list in src/engine/color/compile.ts (one pass per node; parallel/layer nodes = extra ping-pong FBOs). Node editor in color/NodeGraph.tsx (SVG, drag-to-connect). Undo via existing Sequence snapshots.",
+   "effortDays": 5,
+   "priority": "must"
+  },
+  {
+   "name": "3D/1D LUT node (.cube, .3dl) with tetrahedral interpolation and colour-space-aware application",
+   "area": "color",
+   "description": "Load .cube (1D and 3D, 17\u201365) and .3dl LUTs; the node declares the space the LUT expects (log, display, linear) and Omega inserts the correct conversions around it so a LogC\u2192709 LUT or a 'print film' Rec.709 LUT both land correctly. Tetrahedral interpolation (not trilinear), DOMAIN_MIN/MAX honoured, with LUT strength blend. Ships with no proprietary LUTs; the built-in transforms cover cameras.",
+   "beatsPremiere": "Premiere applies LUTs trilinearly in whatever space the clip happens to be in, a notorious source of wrong-looking grades; Resolve has tetrahedral. Space-aware wrapping is unique.",
+   "implementation": "src/engine/color/lut.ts parser (fuzz target per CLAUDE.md; rejects >65^3), uploaded as gl.TEXTURE_3D RGB16F; lut.glsl implements tetrahedral lookup (8 texelFetches). Node params {path, inputSpace, strength}. Project stores LUT bytes in the project folder for relink safety.",
+   "effortDays": 2,
+   "priority": "must"
+  },
+  {
+   "name": "Bake grade to LUT and technical LUT generator",
+   "area": "color",
+   "description": "Export any node range, a whole clip grade, or the timeline look as a .cube (33 or 65) by rendering an identity lattice through the graph; also generate 'technical' LUTs (e.g. LogC4\u2192Rec.709 2.4, S-Log3\u2192HLG) from the built-in math for on-set monitors and other apps.",
+   "beatsPremiere": "Premiere cannot export LUTs at all; Resolve can. The technical-LUT generator from analytic transforms is a colorist's on-set tool.",
+   "implementation": "Draw a 65x65x65 lattice as a 4225x65 RGBA16F texture, run the compiled passes, readPixels float, serialise .cube via window.omega.files.writeBinary. For technical LUTs, run the TS twins on the CPU (no GPU needed; also used as a test oracle).",
+   "effortDays": 1.5,
+   "priority": "should"
+  },
+  {
+   "name": "Chart-based colour match and statistical shot match",
+   "area": "color",
+   "description": "Chart match: drag the four corners of a ColorChecker (24 or SG subset) on the viewer; Omega samples the patches, solves a 3x3 matrix + per-channel 1D correction by least squares to the chart's published reference values in the working space, and writes it as a node. Shot match: match a clip's per-channel mean/std and 3-point luma stats (in Oklab) to a reference still or clip.",
+   "beatsPremiere": "Premiere's Color Match is a black-box 'auto' with no chart support; Resolve's Chart Match is Studio-tier. Both methods here are transparent and editable.",
+   "implementation": "src/engine/color/chart.ts: perspective warp of 4 corners \u2192 patch centres, 9x9 sample via readPixels on the pre-grade linear tap; normal-equation solve (24x3 vs 24x3) in TS. Reference values: X-Rite 2014 sRGB/Lab table (public), converted to working space. Node type 'matrix' + 'curves'. Playwright test renders a synthetic chart PNG with a known cast and checks residual \u0394E < 2.",
+   "effortDays": 4,
+   "priority": "should"
+  },
+  {
+   "name": "Viewer pickers: white balance, black point, white point, hue sample",
+   "area": "color",
+   "description": "Eyedroppers that sample the scene-linear image: 'neutral' sets the Bradford adaptation so the sample becomes grey; black/white point set offset/gain so the sample hits 0 or 1; hue pick drops a control point on the active curve or seeds the qualifier.",
+   "beatsPremiere": "Premiere has a WB picker only; the others require manual dialling.",
+   "implementation": "Pixel probe reads a 5x5 region from the node-input FBO via readPixels (float); store actions apply to the current node's params. Shares infrastructure with the pixel readout (feature 22).",
+   "effortDays": 1,
+   "priority": "must"
+  },
+  {
+   "name": "Keyframable grade parameters with easing and grade dissolves",
+   "area": "color",
+   "description": "Every grade parameter (wheels, curves points, window positions, LUT strength, node bypass) can be keyframed with linear/ease/hold interpolation; the graph shows keyframe lanes per node; a 'grade dissolve' morphs between two adjacent clips' grades across a cut for invisible lighting changes.",
+   "beatsPremiere": "Premiere can keyframe Lumetri values but not curves or masks together; Resolve has a separate keyframe track. Grade dissolve across cuts is not in Premiere.",
+   "implementation": "Params become {value, keys?: Keyframe[]}; evaluator in src/engine/anim/evaluate.ts resolves to a flat uniform block per frame. Dissolve = evaluating both graphs and mixing results in a final pass (one extra FBO) for the overlap range. Keyframe lane in the node editor's bottom strip.",
+   "effortDays": 3,
+   "priority": "should"
+  },
+  {
+   "name": "Gallery stills, wipe compare and A/B",
+   "area": "color",
+   "description": "Grab a still (PNG + grade JSON + source timecode) into a project gallery; compare the live image to any still with vertical/horizontal/diagonal/box wipes, split-screen with the previous/next clip, and A/B toggle between two grade versions. Stills can be drag-applied to clips.",
+   "beatsPremiere": "Premiere has 'comparison view' only against the sequence; Resolve's gallery is the reference. Grade-carrying stills are the day-to-day colorist workflow.",
+   "implementation": "Still = render at preview res via the graph, canvas.toBlob, saved to <project>/gallery/<id>.png + .json. Wipe = second graph render (or still texture) composited with gl.scissor or a split shader; divider dragged on the viewer overlay. Gallery panel in color/Gallery.tsx.",
+   "effortDays": 2.5,
+   "priority": "must"
+  },
+  {
+   "name": "Grade versions, copy/paste/ripple and shot grouping",
+   "area": "workflow",
+   "description": "Multiple named grade versions per clip (switch, duplicate, rename); copy grade or individual nodes; paste to selection; 'ripple to all clips from this source' and 'from this camera'; auto-grouping of clips by asset, by camera/codec/colour-space metadata, with pre-/post-clip group nodes.",
+   "beatsPremiere": "Premiere copies effects by hand; no versions, no groups. This is Resolve's clip grouping plus auto-grouping by metadata.",
+   "implementation": "Clip.grade becomes Clip.grades: {active, versions[]}; GradeGroup {id, name, clipIds, pre, post}. Store actions in store.ts with undo. Auto-group = reduce over assets' probe metadata.",
+   "effortDays": 2,
+   "priority": "should"
+  },
+  {
+   "name": "Exposure and legality overlays: false colour, zebras, gamut warning, broadcast-safe clipper",
+   "area": "monitor",
+   "description": "ARRI-style false colour (IRE bands for SDR, nit bands for HDR), zebras at a chosen IRE/nit level, an out-of-gamut overlay for the delivery space (post-ODT), and a Broadcast Safe node (EBU R103 soft-knee clipper, selectable 103/109% or 'legal' 0-100) with a clip counter shown in the scopes.",
+   "beatsPremiere": "Premiere has a 'Video Limiter' and no false colour or gamut warning; Resolve has all but the nit-aware false colour in Free.",
+   "implementation": "overlays.glsl as an optional final pass with uniforms for mode/thresholds; gamut test = convert ODT output to target primaries and flag any channel outside [0,1] by >1/1023. R103 clipper is a node type reusing primaries.glsl's knee code.",
+   "effortDays": 2,
+   "priority": "should"
+  },
+  {
+   "name": "Viewer overlays and pixel probe readout",
+   "area": "monitor",
+   "description": "Guides (action/title safe, centre, thirds), aspect masks (1.85, 2.39, 4:3, 9:16, 1:1, custom) with opacity, and a hover/locked pixel probe that prints the value as 8-bit, 10-bit code, float linear, IRE, nits (for PQ/HLG) and CIE xy, read from the tap of your choice (source, node, output).",
+   "beatsPremiere": "Premiere's program monitor has safe margins only; Resolve shows RGB values in one format at a time.",
+   "implementation": "SVG overlay layer in Monitor.tsx; probe = 1x1 readPixels from chosen FBO in float, conversions from the TS twins. Preferences persisted per project.",
+   "effortDays": 1.5,
+   "priority": "should"
+  },
+  {
+   "name": "Viewer transform, calibration LUT slot, surround and blackout mode",
+   "area": "monitor",
+   "description": "Choose the viewer's assumed display (sRGB, Rec.709 2.4, Display P3, HLG/PQ simulated to SDR) independent of delivery; load a calibration .cube for a profiled monitor; set surround grey (0/10/18 %); Shift+F 'blackout' hides all UI except the image on a neutral surround.",
+   "beatsPremiere": "Premiere assumes the OS profile and offers no viewer LUT; Resolve's are Studio-level. Neutral surround and blackout are what colorists ask for first.",
+   "implementation": "ODT pass accepts a 'viewer' transform and an optional LUT texture after it. Blackout = CSS class on .ws toggling panels to display:none and setting .monitor__frame background. Stored in localStorage (per-viewer convenience).",
+   "effortDays": 1,
+   "priority": "should"
+  },
+  {
+   "name": "Film look nodes: grain, halation, bloom, vignette",
+   "area": "effects",
+   "description": "Resolution-independent procedural film grain (per-channel size, strength, shadow/highlight weighting, applied in log space so it looks like negative grain), halation (highlight bleed with red-shifted falloff in linear light), bloom, and an SDF vignette with softness and inner/outer control, all GPU nodes in the grade graph.",
+   "beatsPremiere": "Premiere's Noise effect is uniform RGB noise; Resolve Film Grain and Halation are Studio-only.",
+   "implementation": "grain.glsl (3-octave hash noise seeded by frame index, scaled by a density curve), halation = threshold \u2192 3-tap downsampled gaussian chain \u2192 red-weighted add (reuses blur passes from the qualifier), vignette in windows.glsl. Node types registered in compile.ts.",
+   "effortDays": 3,
+   "priority": "should"
+  },
+  {
+   "name": "Noise reduction (spatial luma/chroma, temporal)",
+   "area": "effects",
+   "description": "Spatial NR with separate luma and chroma strength and radius (chroma NR in a YCbCr-like space so it never softens detail), plus a 2-frame temporal blend gated by a motion threshold to clean shadows in log footage without ghosting.",
+   "beatsPremiere": "Premiere has no built-in NR (it needs Neat Video); Resolve NR is Studio-only.",
+   "implementation": "Bilateral (5x5/9x9) separable approximation in nr.glsl; temporal pass keeps the previous graded-input FBO (one extra texture per clip) and mixes where |\u0394| < threshold. Exporter renders sequentially so the temporal state is deterministic.",
+   "effortDays": 4,
+   "priority": "could"
+  },
+  {
+   "name": "Linear-light compositing, dissolves and opacity",
+   "area": "timeline",
+   "description": "Clip stacking, opacity and cross-dissolves are computed in scene-linear light with a per-sequence toggle (and a 'perceptual' option for titles), so dissolves do not dip in brightness and overlays blend like light.",
+   "beatsPremiere": "Premiere's 'Composite in Linear Color' is off by default and only applies when GPU-accelerated; here it is the baseline behaviour of the graph.",
+   "implementation": "The compositor pass in the render graph already runs in working space; the toggle only inserts/omits the ODT before the mix. Dissolve = the transition pass mixes two clip textures with mix(a,b,t) in linear.",
+   "effortDays": 1,
+   "priority": "should"
+  },
+  {
+   "name": "HDR delivery: 10-bit HEVC Main10, VP9 Profile 2, AV1 10-bit with PQ/HLG signalling and measured MaxCLL/MaxFALL",
+   "area": "export",
+   "description": "When the delivery transform is PQ or HLG, the exporter renders to 10-bit (I420P10 VideoFrames tagged bt2020/pq|hlg/bt2020-ncl), picks the first 10-bit encoder the machine supports via VideoEncoder.isConfigSupported (hevc Main10 hardware, vp09.02, av01 10-bit), writes the colr/vpcC/av1C colour fields through Mediabunny, and measures MaxCLL/MaxFALL from the rendered frames, printing them in the export summary and writing them where the container supports it.",
+   "beatsPremiere": "Parity with Premiere/Resolve Studio on HDR output; Resolve Free has no HDR Dolby/10-bit export; measured (not guessed) MaxCLL/MaxFALL is a plus. Honest limitation: 10-bit encoders depend on the OS.",
+   "implementation": "exporter.ts: replace CanvasSource with VideoSampleSource; readPixels RGBA16F from the ODT FBO \u2192 TS pack to I420P10 (BT.2020 NCL) \u2192 new VideoFrame(buf,{format:'I420P10', colorSpace}). Codec probe list per preset in presets.ts ('hevc-main10', 'vp9-p2', 'av1-10'). MaxCLL/FALL accumulated in the ODT pass via a 1x1 max-reduction readback every frame. Smoke test uses vp09.02 (software, present in SwiftShader builds).",
+   "effortDays": 4,
+   "priority": "must"
+  },
+  {
+   "name": "Delivery colour pipeline in the Export dialog",
+   "area": "export",
+   "description": "Export gains a Colour section: output transform (Rec.709 2.4, sRGB, P3-D65 2.2 'Apple', PQ, HLG), range (legal/full), optional burn-in LUT, 'render timeline grade' toggle, 'SDR from HDR timeline' with tone-mapping preview, and a container tag preview (primaries/transfer/matrix) so the file is tagged correctly for YouTube/Vimeo HDR.",
+   "beatsPremiere": "Premiere's export colour settings are scattered and the tagging is notoriously wrong for P3/HLG; one panel with a live tagged preview is cleaner than Resolve's Deliver page.",
+   "implementation": "ExportJob gains {outputTransform, range, lutPath, applyGrade}; the export graph is compiled with that ODT; mediabunny Output video track gets colorSpace from the job. ExportDialog.tsx adds the section and reuses the Monitor's ODT preview for a 'what it will look like' thumbnail.",
+   "effortDays": 2,
+   "priority": "must"
+  },
+  {
+   "name": "Frame export: scene-linear EXR, 16-bit PNG, 16-bit TIFF",
+   "area": "export",
+   "description": "Export the current frame (or a frame range) as OpenEXR (half-float, ZIP compressed, scene-linear with primaries chromaticities header), 16-bit PNG or 16-bit TIFF in the chosen display space \u2014 for VFX handoff, print stills and poster frames.",
+   "beatsPremiere": "Premiere exports 8-bit PNG/TIFF frames and no EXR without Media Encoder; Resolve can. Scene-linear EXR from a Chromium app is novel.",
+   "implementation": "src/engine/io/exr.ts writer (scanline, half, ZIP via fflate.deflateSync; header with chromaticities/whiteLuminance attributes), png16.ts (CRC + zlib via fflate), tiff16.ts. Source = readPixels RGBA16F \u2192 Float16 pack in TS. Each writer gets a round-trip unit test; parsers are not added (no new fuzz surface).",
+   "effortDays": 2,
+   "priority": "should"
+  },
+  {
+   "name": "ASC CDL and EDL/CDL interchange",
+   "area": "workflow",
+   "description": "A CDL node (Slope/Offset/Power/Saturation) that imports and exports .cdl/.ccc/.cc XML; EDL (CMX3600) export with ASC_SOP/ASC_SAT comments and import that applies CDLs to matching clips by reel/timecode, so looks travel to and from Resolve, Baselight and on-set tools.",
+   "beatsPremiere": "Premiere has no CDL support; Resolve has. This is the standard way looks move between departments on a film.",
+   "implementation": "cdl.glsl is three lines; src/io/cdl.ts XML parse/serialise (DOMParser, fuzz target), src/io/edl.ts text parser/serialiser. Reel name and source TC come from asset metadata (Mediabunny tmcd track where present, else filename).",
+   "effortDays": 2,
+   "priority": "could"
+  },
+  {
+   "name": "Scene-cut detection",
+   "area": "workflow",
+   "description": "Analyse a clip (or the whole timeline) for cuts using histogram and edge-change ratios and add markers or razor the clip at each cut, so flattened or screen-captured footage can be graded shot by shot.",
+   "beatsPremiere": "Premiere has 'Scene Edit Detection' and Resolve has it; parity, but it reuses the colour engine's histogram.",
+   "implementation": "Reuse the GPU histogram (feature 7) at 160x90 per frame while a Worker drives the frame source sequentially; chi-square distance threshold with adaptive baseline; results go to splitClip/markers store actions. Verified on a synthetic clip with 5 hard cuts.",
+   "effortDays": 1.5,
+   "priority": "could"
+  },
+  {
+   "name": "Colour-math conformance harness (golden ramps vs. CPU reference)",
+   "area": "workflow",
+   "description": "An automated test that renders synthetic ramps, colour sweeps and a 10-bit test pattern through every IDT, ODT, LUT interpolation and primary operation on the GPU and compares them to the TypeScript twin implementations (\u0394E and code-value tolerance), under SwiftShader in the Playwright smoke. Ships as a hidden 'Self test' in the Colour Management panel so users on odd GPUs can verify their machine.",
+   "beatsPremiere": "Nobody ships a user-runnable colour self-test; it is also what makes the no-fake-features rule verifiable for the whole colour stack.",
+   "implementation": "scripts/smoke.mjs gains a 'color' stage that calls window.omegaDebug.colorSelfTest() (exposed only in the video module), which renders 64x64 patches for each transform and compares to TS outputs; results JSON saved alongside screenshots. Tolerances: 1/1023 for transfer functions, \u0394E2000 < 0.5 for matrices, < 1.0 for tetrahedral LUT vs. exact.",
+   "effortDays": 2,
+   "priority": "must"
+  },
+  {
+   "name": "Perceptual Hue/Sat warper (Oklab mesh)",
+   "area": "color",
+   "description": "A Colour-Warper-style 2D mesh over the Oklab chroma plane: drag any mesh vertex to move a colour (and its neighbourhood, with falloff) to another hue/saturation, with luma preserved; mesh resolution 8\u201332, resettable per vertex.",
+   "beatsPremiere": "Not in Premiere or FCP; Resolve's Color Warper is Studio-only. Oklab makes it hue-linear.",
+   "implementation": "Mesh stored as NxN displacement grid uploaded as RG16F texture; warper.glsl converts working\u2192Oklab, samples the displacement bilinearly in polar coords, converts back. Editor draws the mesh on a chroma disc in color/Warper.tsx.",
+   "effortDays": 4,
+   "priority": "could"
+  },
+  {
+   "name": "Perceptual colour tools: Oklab/ICtCp saturation, hue-preserving tone, colour boost",
+   "area": "color",
+   "description": "Saturation and 'colour boost' operating in Oklab (so blue skies don't go purple when desaturated), ICtCp-based hue-preserving highlight roll-off for HDR, and a 'skin tone protect' slider that excludes the skin-tone vector from saturation moves.",
+   "beatsPremiere": "Premiere saturates in RGB and shifts hue; Resolve's are RGB-based too. Perceptual, hue-locked operations are a recognisable quality difference.",
+   "implementation": "oklab.glsl and ictcp.glsl helpers added to shaderlib; parameters in the primaries node; TS twins for the conformance harness.",
+   "effortDays": 1.5,
+   "priority": "could"
+  },
+  {
+   "name": "Project colour management panel with per-clip overrides and mismatch banners",
+   "area": "ui",
+   "description": "One panel: working space, timeline colour space, viewer transform, default output transform; per-clip input override with a preview thumbnail; a list of untagged/mismatched clips with one-click fixes; and inline banners in the Inspector when a clip's tag disagrees with the timeline (e.g. HLG clip in a Rec.709 timeline).",
+   "beatsPremiere": "Premiere's colour settings are split between Sequence Settings, Lumetri and Export; Resolve's are in Project Settings. One place, with mismatch triage, follows VISION's 'nothing to decide before the first cut' rule while still exposing everything.",
+   "implementation": "ProjectSettings extended {workingSpace, outputTransform, viewerTransform}; MediaAsset.color from feature 5; panel in color/ColorManagement.tsx; banner component reused from the dashboard's NewProjectDialog mismatch pattern.",
+   "effortDays": 1.5,
+   "priority": "must"
+  }
+ ],
+ "uiDirection": "The Color page is a dedicated workspace tab (the existing 'Color' tab stops being a toast) with a layout colorists already have in their hands but drawn with far less chrome. Top band: a Gallery strip on the left (stills as 96px thumbnails, no labels until hover), the Viewer in the centre on a neutral surround (user-selectable 0/10/18 % grey; the default is 10 % so the image, not the UI, is the brightest thing on screen), and a Node Graph on the right that can collapse to a vertical node list. Bottom band: a palette rail of equal-height panels (Wheels, Log wheels, Curves, Qualifier, Windows, Tracker, LUT, Film, Keyframes) switched by icon tabs, with Scopes docked to the far right and detachable into a second window. The timeline shrinks to a single-track 'shot strip' above the palettes, as in Resolve, with an option to show the full Edit timeline.\n\nVisual language: zero saturated chrome inside the Color page. The Video accent blue is used only for the selected node outline, the active keyframe and focus rings; everything else is a six-step neutral grey scale (#0b0b0d \u2192 #2b2b34, from styles.css) with 1px hairline borders and no drop shadows. Panels have no header bars; a 11px uppercase tracked label sits inside the panel. Numeric values are JetBrains Mono, right-aligned, and are scrubbable (drag) with Shift for fine and Alt for coarse. Wheels are 96px canvas discs with a thin ring, a dot cursor and a master dial underneath, using the Oklch hue ring so hue angles are perceptually even. Curves are drawn on a faint 4x4 grid with a histogram ghost behind them.\n\nIconography: the Icons.tsx monoline set is extended with a 1.5px stroke (down from 1.8), 24-unit grid, rounded caps, no fills except for Play/record/markers. New glyphs: Wheel (circle with centre dot), Curve (S-path), Qualifier (eyedropper on a square), Window (ellipse with handles), Tracker (crosshair with dots), Node (two squares connected), LUT (cube wireframe), Scope (waveform zigzag in a frame), Grain, Halation (sun with soft rays), Still (camera frame), Wipe (rectangle split diagonally), CDL (three sliders), EXR (layered square). Each icon exists in 16/20/24 px optical sizes.\n\nDensity and interaction: 28px rows, 24px controls, 4px gaps; the whole palette rail works without a mouse (Tab/arrow navigation, numeric entry). Right-click on any parameter offers Reset, Add keyframe, Copy, Paste. The viewer has a single toolbar line that fades after two seconds: tap source (Source/Node/Output), overlays (guides, false colour, gamut, zebras), compare (wipe/A-B/split), probe. Shift+F enters Blackout: everything but the image on the chosen surround. Workspaces are presets of this layout (Grade, Scopes-heavy, Tracking, Deliver) saved per project, and the Edit page keeps a mini Color panel (wheels + LUT) so quick fixes never require the page switch.",
+ "cinemaGrade": "'Cinema grade' here means four verifiable properties, not a marketing word. (1) Precision: 10-bit (and 12-bit) sources are decoded by WebCodecs through Mediabunny into raw YUV planes, converted on the GPU with the correct matrix and range, and held in RGBA16F textures from input transform to output transform; nothing is rounded to 8 bits until the final preview quantisation, which is dithered with blue noise. (2) Correct colour science: footage is linearised with the manufacturer's published log curve and primaries (ARRI, Sony, Panasonic, Canon, RED, Blackmagic, Apple, DJI, Fujifilm, Nikon), graded in a scene-linear working space, and shown or delivered through explicit output transforms (BT.1886, sRGB, P3, PQ, HLG) with a filmic tone curve and ACES-1.3-style gamut compression; temperature is a Bradford adaptation, saturation can be perceptual, and compositing is linear-light. (3) Professional tools: a node graph with serial/parallel/layer/outside/key-mixer nodes, qualifiers with matte finesse, power windows with a tracker, log and lift/gamma/gain wheels, the full curve set, GPU waveform/parade/vectorscope/histogram/CIE scopes, gallery stills with wipes, grade versions and groups, LUT in/out with tetrahedral interpolation, CDL/EDL and scene-linear EXR interchange. (4) Honest delivery: 10-bit HEVC Main10 / VP9.2 / AV1 HDR export with correct container signalling and measured MaxCLL/MaxFALL where the machine's encoders allow it, SDR-from-HDR with the same transform you previewed, and a user-runnable conformance self-test that compares every GPU transform to its CPU reference. The limits are stated rather than hidden: the preview canvas is 8-bit SDR (HDR is viewed through a mapped transform, not on an HDR panel), ProRes/RAW cannot be decoded by Chromium, and 10-bit encode depends on the OS encoders.",
+ "risks": [
+  "SwiftShader throughput: float16 ping-pong passes at full sequence resolution will be slow under Xvfb; the smoke test must run at 480x270 preview and the engine needs a preview-resolution scaler from day one, or Playwright timeouts will fail the build.",
+  "WebGL2 float render targets: EXT_color_buffer_float is present in SwiftShader and desktop Chromium but some Linux Mesa/ANGLE combos only expose half-float; the FBO allocator must fall back to RGBA16F\u2192RGBA8 with an on-screen warning rather than crash.",
+  "10-bit precision may be lost silently: hardware-decoded HEVC/VP9 frames can come back as 8-bit NV12 from VideoFrame.copyTo; detect sample.format per clip, fall back to prefer-software decoding for 10-bit tracks, and show the effective bit depth in the Inspector so it is never faked.",
+  "Encoder availability: HEVC Main10 encode is hardware-only in Chromium (Windows/macOS), AV1 10-bit is software (slow) and VP9 Profile 2 is software; Linux may offer only VP9.2. Presets must gate on isConfigSupported and the dialog must say which codec will actually be used.",
+  "Container metadata gaps: writing ST 2086 mastering-display and CLLI boxes through Mediabunny may need a post-mux MP4 box patch; if that proves fragile, ship MaxCLL/MaxFALL as a sidecar report and in the Export summary rather than claim a box we did not write.",
+  "Trademark and licensing: do not call anything 'ACES' (trademark of the Academy); say 'ACES-compatible AP1 working space'; camera log formulas are published and royalty-free, but ship no manufacturer or third-party LUT files.",
+  "readPixels on the main thread for scopes, probes and MaxCLL can stall playback; use fenceSync/PBO async readback and drop scope frames rather than video frames.",
+  "The render-graph pass interface (texture inputs, uniform block, FBO handoff) is the integration point for ten parallel engineers; it must be defined and merged on day one with a stub pass, or node types will not compose.",
+  "Project format growth (grade graphs, keyframes, groups, versions) must bump FORMAT_VERSION with a migration from 0.1.0-json and keep the undo stack (currently Sequence snapshots) manageable; grade edits should snapshot only the clip grade, not the whole sequence.",
+  "The tracker and chart-match are numerically sensitive; both need deterministic synthetic fixtures in the smoke test, otherwise they risk becoming 'works on my footage' features that violate the no-placeholder rule.",
+  "Audio and GPU: the WebGL work runs on the renderer main thread; long exports must yield (await per frame) to keep OfflineAudioContext mixing and the UI responsive, and OffscreenCanvas-in-Worker should be evaluated for export in a follow-up."
+ ]
+}

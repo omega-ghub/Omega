@@ -60,11 +60,16 @@ export interface OmegaApi {
     pickFolder(defaultPath?: string): Promise<string | null>;
     pickProjectFile(): Promise<string | null>;
     pickExportPath(defaultName: string, extension: string): Promise<string | null>;
+    /** Generic multi-file picker (e.g. LUTs: ['cube'], captions: ['srt','vtt']). */
+    pickFiles(title: string, extensions: string[]): Promise<string[]>;
+    /** Generic save dialog. */
+    pickSavePath(title: string, defaultName: string, extension: string): Promise<string | null>;
   };
   projects: {
     create(location: string, name: string, json: string): Promise<{ filePath: string; dir: string }>;
     save(filePath: string, json: string): Promise<void>;
     load(filePath: string): Promise<string>;
+    backup(filePath: string, json: string): Promise<void>;
     recents(): Promise<RecentProject[]>;
     addRecent(entry: RecentProject): Promise<void>;
     removeRecent(path: string): Promise<void>;
@@ -84,6 +89,10 @@ export interface OmegaApi {
   };
   files: {
     writeBinary(path: string, data: ArrayBuffer): Promise<void>;
+    readText(path: string): Promise<string>;
+    writeText(path: string, text: string): Promise<void>;
+    /** Absolute path of a File dropped from the OS (drag & drop import). */
+    pathForFile(file: File): string;
     showInFolder(path: string): void;
   };
 }

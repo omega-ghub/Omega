@@ -11,7 +11,7 @@ const out = path.join(root, 'dist-modules');
 const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
 
 const META = {
-  video: { name: 'Omega Video', description: 'Edit, color and finish video.' },
+  video: { name: 'Delta', description: 'Video: edit, grade, mix and deliver.' },
 };
 
 function walk(dir, base = '') {

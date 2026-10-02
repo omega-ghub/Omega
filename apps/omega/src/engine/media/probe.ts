@@ -1,6 +1,6 @@
 import { ALL_FORMATS, Input, UrlSource } from 'mediabunny';
-import type { AssetKind, MediaAsset } from '../state/types';
-import { newId } from '../state/types';
+import { makeAsset } from '../../state/defaults';
+import type { AssetKind, MediaAsset } from '../../state/types';
 
 const VIDEO_EXT = new Set(['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi']);
 const AUDIO_EXT = new Set(['mp3', 'wav', 'aac', 'm4a', 'flac', 'ogg', 'opus']);
@@ -26,7 +26,7 @@ export async function probeMedia(path: string, name: string): Promise<MediaAsset
 
   if (kind === 'image') {
     const { width, height } = await loadImageSize(url);
-    return { id: newId('asset'), name, path, kind, duration: STILL_DURATION, width, height, hasAudio: false, hasVideo: true };
+    return makeAsset({ name, path, kind, duration: STILL_DURATION, width, height, hasAudio: false, hasVideo: true });
   }
 
   try {
@@ -47,18 +47,7 @@ export async function probeMedia(path: string, name: string): Promise<MediaAsset
         fps = roundFps(stats.averagePacketRate);
       }
       const hasAudio = !!audio && (await audio.canDecode());
-      return {
-        id: newId('asset'),
-        name,
-        path,
-        kind: hasVideo ? 'video' : 'audio',
-        duration,
-        width,
-        height,
-        fps,
-        hasAudio,
-        hasVideo,
-      };
+      return makeAsset({ name, path, kind: hasVideo ? 'video' : 'audio', duration, width, height, fps, hasAudio, hasVideo });
     } finally {
       input.dispose();
     }
@@ -99,8 +88,7 @@ function probeWithElement(url: string, path: string, name: string, kind: AssetKi
     el.preload = 'metadata';
     el.onloadedmetadata = () => {
       const hasVideo = kind === 'video' && el.videoWidth > 0;
-      resolve({
-        id: newId('asset'),
+      resolve(makeAsset({
         name,
         path,
         kind: hasVideo ? 'video' : 'audio',
@@ -109,7 +97,7 @@ function probeWithElement(url: string, path: string, name: string, kind: AssetKi
         height: hasVideo ? el.videoHeight : undefined,
         hasAudio: true, // cannot tell from the element; assume yes
         hasVideo,
-      });
+      }));
       el.removeAttribute('src');
       el.load();
     };

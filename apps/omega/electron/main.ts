@@ -284,6 +284,39 @@ function registerIpc() {
 
   ipcMain.handle('project:load', async (_e, filePath: string) => fsp.readFile(filePath, 'utf8'));
 
+  // Rolling backups in <project dir>/.backups, newest 20 kept.
+  ipcMain.handle('project:backup', async (_e, filePath: string, json: string) => {
+    const dir = path.join(path.dirname(filePath), '.backups');
+    await fsp.mkdir(dir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    await fsp.writeFile(path.join(dir, `${path.basename(filePath, '.omega')} ${stamp}.omega`), json, 'utf8');
+    const files = (await fsp.readdir(dir)).filter((f) => f.endsWith('.omega')).sort();
+    for (const f of files.slice(0, Math.max(0, files.length - 20))) await fsp.rm(path.join(dir, f), { force: true });
+  });
+
+  // Text files the renderer needs to read (LUTs, captions) — read-only.
+  ipcMain.handle('file:readText', async (_e, p: string) => fsp.readFile(p, 'utf8'));
+  ipcMain.handle('file:writeText', async (_e, p: string, text: string) => {
+    await fsp.mkdir(path.dirname(p), { recursive: true });
+    await fsp.writeFile(p, text, 'utf8');
+  });
+  ipcMain.handle('dialog:pickFiles', async (e, title: string, extensions: string[]) => {
+    const win = BrowserWindow.fromWebContents(e.sender) ?? undefined;
+    const smoke = process.env.OMEGA_SMOKE_FILES;
+    if (smoke) {
+      const want = smoke.split(path.delimiter).filter((f) => extensions.includes(path.extname(f).slice(1).toLowerCase()));
+      if (want.length) return want;
+    }
+    const result = await dialog.showOpenDialog(win!, { title, properties: ['openFile', 'multiSelections'], filters: [{ name: title, extensions }] });
+    return result.canceled ? [] : result.filePaths;
+  });
+  ipcMain.handle('dialog:pickSavePath', async (e, title: string, defaultName: string, extension: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender) ?? undefined;
+    if (process.env.OMEGA_SMOKE_EXPORT_DIR) return path.join(process.env.OMEGA_SMOKE_EXPORT_DIR, `${defaultName}.${extension}`);
+    const result = await dialog.showSaveDialog(win!, { title, defaultPath: path.join(app.getPath('videos'), `${defaultName}.${extension}`), filters: [{ name: extension.toUpperCase(), extensions: [extension] }] });
+    return result.canceled || !result.filePath ? null : result.filePath;
+  });
+
   ipcMain.handle('recents:list', () => readRecents());
   ipcMain.handle('recents:add', async (_e, entry: RecentProject) => {
     const list = (await readRecents()).filter((r) => r.path !== entry.path);
@@ -353,6 +386,9 @@ async function atomicWrite(filePath: string, contents: string) {
 // ---------------------------------------------------------------------------
 
 app.setName('Omega');
+// WebGL must work on machines without a usable GPU (VMs, remote desktops, CI):
+// allow Chromium's software rasterizer as a fallback. Content is local and trusted.
+app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 
 app.whenReady().then(() => {
   protocol.handle('omega-media', serveMedia);
