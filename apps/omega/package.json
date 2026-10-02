@@ -2,7 +2,7 @@
   "name": "omega",
   "productName": "Omega",
   "version": "0.1.0",
-  "description": "Omega — the all-in-one creative suite for video, audio, image and 3D",
+  "description": "Omega \u2014 the all-in-one creative suite for video, audio, image and 3D",
   "author": {
     "name": "Omega",
     "email": "hello@omega.invalid"
@@ -18,9 +18,9 @@
     "start": "npm run build && npm run build:modules && electron .",
     "smoke": "node scripts/smoke.mjs",
     "dist": "npm run build && electron-builder --publish never",
-    "dist:win": "npm run build && electron-builder --win --publish never",
-    "dist:mac": "npm run build && electron-builder --mac --publish never",
-    "dist:linux": "npm run build && electron-builder --linux --publish never",
+    "dist:win": "npm run build && node scripts/dist.mjs win",
+    "dist:mac": "npm run build && node scripts/dist.mjs mac",
+    "dist:linux": "npm run build && node scripts/dist.mjs linux",
     "build:modules": "tsc --noEmit -p tsconfig.json && vite build -c vite.module.config.ts && node scripts/package-modules.mjs",
     "test:unit": "node scripts/test-unit.mjs",
     "test:effects": "node scripts/test-effects.mjs",
