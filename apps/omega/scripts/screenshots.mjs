@@ -53,8 +53,31 @@ if (ws) {
     await item2.click({ timeout: 4000 });
     await ws.keyboard.press(',');
     await ws.waitForTimeout(3000);
-    await shot(ws, '07-delta-edit');
   });
+  // Clear first-run popups so they don't cover the timeline in every shot.
+  await tryStep('dismiss', async () => {
+    for (const id of ['sh-onboarding-close', 'md-suggest-dismiss']) {
+      const b = ws.getByTestId(id);
+      if (await b.count()) await b.first().click({ timeout: 2000 });
+    }
+  });
+  // Park the playhead 3 s in (not on the black frame past the end) and select
+  // the first clip so the inspector, color and audio panels show real controls.
+  await tryStep('playhead', async () => {
+    await ws.keyboard.press('Home');
+    for (let i = 0; i < 18; i++) await ws.keyboard.press('Shift+ArrowRight');
+    await ws.waitForTimeout(1200);
+  });
+  await tryStep('select clip', async () => {
+    const c = await ws.evaluate(() => {
+      const el = document.querySelector('[data-testid="tl-clip"][data-kind="video"]') || document.querySelector('[data-testid="tl-clip"]');
+      return el && { x: +el.dataset.x + +el.dataset.w / 2, y: +el.dataset.y + +el.dataset.h / 2 };
+    });
+    if (!c) throw new Error('no clip on the timeline');
+    await ws.mouse.click(c.x, c.y);
+    await ws.waitForTimeout(1500);
+  });
+  await shot(ws, '07-delta-edit');
   const names = ['edit', 'color', 'audio', 'effects', 'captions', 'deliver'];
   for (let i = 0; i < names.length; i++) {
     await tryStep('ws ' + names[i], async () => { await ws.keyboard.press(`Alt+${i + 1}`); await ws.waitForTimeout(2000); await shot(ws, `08-${i + 1}-${names[i]}`); });
