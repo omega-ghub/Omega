@@ -8,12 +8,20 @@ const out = process.argv[2];
 fs.mkdirSync(out, { recursive: true });
 fs.rmSync(path.join(out, 'cfg'), { recursive: true, force: true });
 const app = await electron.launch({
-  args: ['.', '--no-sandbox'],
+  args: ['.', '--no-sandbox', '--disable-gpu-sandbox'],
   env: { ...process.env, OMEGA_CATALOG_URL: pathToFileURL(path.resolve('dist-modules/catalog.json')).href, XDG_CONFIG_HOME: path.join(out, 'cfg') },
 });
 let page = await app.firstWindow();
 await page.setViewportSize?.({ width: 1600, height: 960 }).catch(() => {});
-const shot = async (p, n) => { await p.waitForTimeout(500); await p.screenshot({ path: path.join(out, n + '.png') }); console.log('shot', n); };
+// Retry: under a virtual display the first frames can arrive before the
+// compositor is ready, which fails capture with "Unable to capture screenshot".
+const shot = async (p, n) => {
+  for (let i = 0; i < 8; i++) {
+    await p.waitForTimeout(i ? 1000 : 500);
+    try { await p.screenshot({ path: path.join(out, n + '.png') }); console.log('shot', n); return; }
+    catch (e) { if (i === 7) console.log('shot failed', n, e.message.split('\n')[0]); }
+  }
+};
 const tryStep = async (name, fn) => { try { await fn(); } catch (e) { console.log('step failed:', name, e.message.split('\n')[0]); } };
 page.on('pageerror', (e) => console.log('[hub error]', e.message));
 await page.waitForTimeout(2500);
