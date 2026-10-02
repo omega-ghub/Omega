@@ -10,7 +10,25 @@ permissions:
   contents: write
 
 jobs:
+  # Fast quality gate: types and unit tests must pass before anything ships.
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/omega
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/omega/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:unit
+
   build:
+    needs: check
     strategy:
       fail-fast: false
       matrix:
@@ -58,6 +76,7 @@ jobs:
   # The workspaces ship separately from the hub: each is a small package the
   # hub downloads on demand, described by catalog.json.
   modules:
+    needs: check
     runs-on: ubuntu-latest
     defaults:
       run:

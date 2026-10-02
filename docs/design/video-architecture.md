@@ -129,6 +129,32 @@ index.
 The stub files in each directory define the export names other packages already
 import. **Keep those exports and their props**, and replace the bodies.
 
+### Conventions every package follows
+
+- **Modals.** A package that owns dialogs exports `function Modals()` from its
+  `index.ts`. The shell mounts every package's `Modals` at all times. Each
+  `Modals` renders its dialog only when `useEditor().modal?.id` is one of its
+  ids, which are prefixed by package, e.g. `timeline.speed`, `deliver.export`,
+  `timeline.sequenceSettings`. Open a dialog with
+  `useEditor.getState().openModal('timeline.speed', {clipId})`.
+- **Import entry point.** The media package exports `importPaths(paths: string[])`
+  from its index. The shell calls it for files dropped anywhere on the window, and
+  the media panel calls it for its own Import button.
+- **Shared controls.** The inspector package exports the shared control kit from
+  `src/workspaces/video/inspector/controls.tsx` and writes it **first**:
+  `ScrubNumber`, `Slider`, `ColorField`, `Select`, `Toggle`, `Section`,
+  `KeyframeButton`, `PointField`. Effects, color and audio may import it. Until it
+  exists, build simple local controls and switch later if time allows.
+- **Action ownership** (avoids duplicate key bindings):
+  - **viewer:** playback, J/K/L, frame stepping, I/O mark in/out/clear (acting on
+    whichever monitor has focus), loop, fullscreen, export frame.
+  - **timeline:** tools, editing, markers, nudging, clipboard, transitions, speed,
+    nest, zoom, snapping, tracks.
+  - **media:** import and bins.
+  - **color, audio, captions, deliver:** commands in their own domain.
+  - **shell:** palette, workspaces (Alt+1…6), save (Mod+S), undo/redo
+    (Mod+Z / Mod+Shift+Z), preferences, shortcuts editor.
+
 ### Cross-package APIs (who provides, who consumes)
 
 | API | Provider | Consumers |
