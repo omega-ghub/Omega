@@ -5,8 +5,11 @@
 // 1280-wide (or 960-wide, see setProxyLongSide) file in the first encodable
 // codec (H.264 in MP4, else VP9 / AV1 in WebM) with 1 s key frames, writes it
 // to <project dir>/Proxies/<name>.proxy.mp4|webm, and records it on the asset
-// (proxyStatus 'building' → 'ready' | 'failed', proxyPath). Jobs run one at a
-// time, pause while the editor plays back, and can be cancelled.
+// (proxyStatus 'building' → 'ready' | 'failed', proxyPath). The file streams
+// to disk when the host has positioned writes (files.openWrite/writeAt);
+// otherwise it is encoded into a BufferTarget and written with writeBinary.
+// Jobs run one at a time, pause while the editor plays back, and can be
+// cancelled. Source timestamps are preserved, so proxy frames line up 1:1.
 
 import {
   BufferTarget,

@@ -10,6 +10,30 @@ import { I } from '../../../ui/Icons';
 
 const SCRUB_STEPS_MAX = 64;
 
+// One IntersectionObserver / ResizeObserver for every card.
+const visCallbacks = new WeakMap<Element, (visible: boolean) => void>();
+const sizeCallbacks = new WeakMap<Element, () => void>();
+let io: IntersectionObserver | null = null;
+let ro: ResizeObserver | null = null;
+function observe(el: Element, onVisible: (visible: boolean) => void, onResize: () => void): () => void {
+  io ??= new IntersectionObserver((entries) => {
+    for (const e of entries) visCallbacks.get(e.target)?.(e.isIntersecting);
+  });
+  ro ??= new ResizeObserver((entries) => {
+    for (const e of entries) sizeCallbacks.get(e.target)?.();
+  });
+  visCallbacks.set(el, onVisible);
+  sizeCallbacks.set(el, onResize);
+  io.observe(el);
+  ro.observe(el);
+  return () => {
+    io?.unobserve(el);
+    ro?.unobserve(el);
+    visCallbacks.delete(el);
+    sizeCallbacks.delete(el);
+  };
+}
+
 function drawContain(ctx: CanvasRenderingContext2D, img: CanvasImageSource & { width: number; height: number }, w: number, h: number) {
   const s = Math.min(w / img.width, h / img.height);
   const dw = img.width * s;
@@ -105,25 +129,24 @@ export const Poster = memo(function Poster({ asset, onScrub }: { asset: MediaAss
         if (p && !getPeaks(a.id)) void requestPeaks(p, a.id).then(() => draw(), () => undefined);
       } else requestThumbnails(a, [posterTime(a)]);
     };
-    const io = new IntersectionObserver((entries) => {
-      const vis = entries.some((e) => e.isIntersecting);
-      visibleRef.current = vis;
-      if (vis) {
-        request();
-        draw();
-      }
-    });
-    io.observe(c);
-    const ro = new ResizeObserver(() => visibleRef.current && draw());
-    ro.observe(c);
+    const unobserve = observe(
+      c,
+      (vis) => {
+        visibleRef.current = vis;
+        if (vis) {
+          request();
+          draw();
+        }
+      },
+      () => visibleRef.current && draw(),
+    );
     const offThumbs = onThumbnails((id) => {
       if (id === a.id && visibleRef.current) draw();
     });
     const offPeaks = a.kind === 'audio' ? onPeaks((id) => id === a.id && visibleRef.current && draw()) : () => undefined;
     draw();
     return () => {
-      io.disconnect();
-      ro.disconnect();
+      unobserve();
       offThumbs();
       offPeaks();
     };

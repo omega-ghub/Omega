@@ -245,22 +245,25 @@ const blurDissolve: TransitionDef = {
   name: 'Blur Dissolve',
   category: 'Dissolve',
   description: 'Both shots defocus toward the middle of the transition as they cross-dissolve.',
-  params: [num('amount', 'Blur', 40, { min: 0, max: 400, softMax: 150, unit: 'px', step: 0.5 })],
+  params: [num('amount', 'Blur', 30, { min: 0, max: 300, softMax: 120, unit: 'px', step: 0.5, hint: 'Peak blur radius, in sequence pixels.' })],
   glsl: tglsl(
     [],
     `
 vec4 discBlur(vec2 uv, float R, bool from) {
   if (R < 0.5) return from ? F(uv) : T(uv);
   vec4 acc = vec4(0.0);
+  float ws = 0.0;
   float rot = hash12(uv * u_resolution) * 6.2831853;
-  for (int i = 0; i < 28; i++) {
+  for (int i = 0; i < 48; i++) {
     float fi = float(i) + 0.5;
-    float r = sqrt(fi / 28.0);
+    float r = sqrt(fi / 48.0);
     float a = fi * 2.3999632 + rot;
+    float w = exp(-2.0 * r * r);
     vec2 q = uv + vec2(cos(a), sin(a)) * r * R * u_texel;
-    acc += from ? F(q) : T(q);
+    acc += (from ? F(q) : T(q)) * w;
+    ws += w;
   }
-  return acc / 28.0;
+  return acc / ws;
 }
 vec4 transition(vec2 uv) {
   float p = u_progress;
@@ -397,12 +400,13 @@ vec4 transition(vec2 uv) {
   float p = u_progress;
   float e = pow(max(sin(3.14159265 * p), 0.0), 0.6) * u_intensity * 0.01;
   float slice = floor(p * 14.0);
+  float bsz = u_blockSize;
   vec2 px = uv * u_resolution;
-  vec2 bs = max(vec2(u_blockSize * 2.4, u_blockSize * 0.5), vec2(2.0));
+  vec2 bs = max(vec2(bsz * 2.4, bsz * 0.5), vec2(2.0));
   vec2 cell = floor(px / bs);
   float h = hash12(cell + slice * 7.13);
   float hit = step(1.0 - 0.45 * e, h);
-  vec2 disp = (hash22(cell + slice) - 0.5) * vec2(u_blockSize * 3.0, u_blockSize * 0.4) * hit * e;
+  vec2 disp = (hash22(cell + slice) - 0.5) * vec2(bsz * 3.0, bsz * 0.4) * hit * e;
   float th = 0.5 + (hash12(cell * 1.31 + 3.7) - 0.5) * 0.5 * min(e * 2.0, 1.0);
   bool to = p >= th;
   vec2 q = uv + disp * u_texel;
@@ -458,7 +462,7 @@ vec4 transition(vec2 uv) {
   float n = fbm(q * 2.2 + w * 1.2 + vec2(t * 0.3, 0.0), 4) * 0.5 + 0.5;
   float leak = smoothstep(0.0, 1.0, 1.0 - abs(sweep) * 0.8) * smoothstep(0.2, 0.8, n + 0.25);
   vec3 col = mix(toneB(u_tone), toneA(u_tone), smoothstep(0.3, 0.9, n));
-  vec3 l = col * (leak * 2.4 + 0.35) * env * u_intensity * 0.01;
+  vec3 l = col * (leak * 1.5 + 0.1) * env * u_intensity * 0.01;
   return vec4(base.rgb + l * max(base.a, env), max(base.a, clamp(maxc(l), 0.0, 1.0) * env));
 }`,
   ),

@@ -26,7 +26,7 @@ const filmDamage: EffectDef = {
         ['util', 'noise'],
         `
 float specks(vec2 p, float fr, float density) {
-  float cell = 48.0;
+  float cell = 48.0 * u_resolution.y / 1080.0;
   vec2 g = floor(p / cell);
   float m = 0.0;
   for (int j = -1; j <= 1; j++) {
@@ -43,6 +43,7 @@ float specks(vec2 p, float fr, float density) {
         vec2 dd = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * d;
         float bend = sin(dd.x * 0.08 + hair * 20.0) * 6.0;
         float len = 40.0 * u_resolution.y / 1080.0;
+        bend *= u_resolution.y / 1080.0;
         float hm = (1.0 - smoothstep(0.4, 1.2, abs(dd.y - bend))) * (1.0 - smoothstep(len * 0.7, len, abs(dd.x)));
         m = max(m, hm * 0.85);
       } else {
@@ -64,7 +65,7 @@ vec4 effect(vec2 uv) {
   float dens = clamp(u_dust * 0.01 * 0.06, 0.0, 0.4);
   float m = specks(p, fr, dens);
   float darkShare = u_dark * 0.01;
-  float isDark = step(hash13(vec3(floor(p / 48.0), fr + 4.4)), darkShare);
+  float isDark = step(hash13(vec3(floor(p / (48.0 * u_resolution.y / 1080.0)), fr + 4.4)), darkShare);
   c = mix(c, isDark > 0.5 ? c * 0.08 : max(c, vec3(1.0)) * 1.1, m);
   float slow = floor(u_time * 1.6) + u_seed * 77.0;
   for (int k = 0; k < 4; k++) {
@@ -93,7 +94,7 @@ const gateWeave: EffectDef = {
   category: 'Film',
   description: 'The gentle wander of film moving through a camera or projector gate: slow drift plus frame-to-frame registration jitter.',
   params: [
-    px('amount', 'Amount', 1.5, { max: 40, softMax: 8, hint: 'Peak drift in pixels at 1080p (scales with resolution).' }),
+    px('amount', 'Amount', 2, { max: 60, softMax: 12, hint: 'Peak drift in layer pixels.' }),
     hz('speed', 'Speed', 1.2, { max: 10, softMax: 4 }),
     ang('rotation', 'Rotation', 0.08, { min: 0, max: 5, softMax: 1, step: 0.01 }),
     pct('jitter', 'Frame jitter', 30),
@@ -104,12 +105,11 @@ const gateWeave: EffectDef = {
         ['util', 'noise', 'taps'],
         `
 vec4 effect(vec2 uv) {
-  float sc = u_resolution.y / 1080.0;
   float t = u_time * u_speed + u_seed * 50.0;
   float fr = floor(u_time * 24.0 + 0.5);
   vec2 drift = vec2(gnoise(vec2(t, 1.7)), gnoise(vec2(t * 0.8, 9.2)) * 0.65);
   vec2 jit = (vec2(hash11(fr + u_seed * 100.0), hash11(fr * 1.3 + 7.0)) - 0.5) * u_jitter * 0.01;
-  vec2 off = (drift + jit) * u_amount * sc;
+  vec2 off = (drift + jit) * u_amount;
   float rot = radians(u_rotation) * gnoise(vec2(t * 0.7, 4.4));
   vec2 c = 0.5 * u_resolution;
   vec2 p = uv * u_resolution - c;

@@ -60,3 +60,12 @@ export function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message || err.name;
   return String(err);
 }
+
+/** Opt-in export diagnostics: localStorage['delta.debugExport'] = '1'. */
+export function exportDebug(...args: unknown[]): void {
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('delta.debugExport') === '1') console.info('[deliver]', ...args);
+  } catch {
+    /* ignore */
+  }
+}

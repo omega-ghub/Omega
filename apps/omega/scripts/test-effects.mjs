@@ -404,8 +404,8 @@ void main() { outColor = transition(v_uv); }`;
     const list = [base];
     for (const p of def.params) {
       if (p.type === 'number' || p.type === 'angle') {
-        for (const v of [p.min, p.softMin, p.softMax, p.max]) if (v !== undefined) list.push({ ...base, [p.key]: v });
-        list.push({ ...base, [p.key]: (Number(p.default) || 1) * 3.7 });
+        for (const v of [p.min, p.max ?? p.softMax]) if (v !== undefined) list.push({ ...base, [p.key]: v });
+        if (p.max === undefined) list.push({ ...base, [p.key]: (Number(p.default) || 1) * 3.7 });
       } else if (p.type === 'choice') {
         for (const c of p.choices ?? []) list.push({ ...base, [p.key]: c.value });
       } else if (p.type === 'bool') {
@@ -429,8 +429,40 @@ void main() { outColor = transition(v_uv); }`;
     return `${c.log.trim()}\n${ctx}`;
   }
 
+  const sheetTiles = [];
+  /** Renders the collected tiles into PNG data URLs, `perPage` tiles each (8 columns). */
+  window.makeSheets = function makeSheets(perPage) {
+    const urls = [];
+    for (let start = 0; start < sheetTiles.length; start += perPage) {
+      const list = sheetTiles.slice(start, start + perPage);
+      const cols = 8;
+      const tw = 192;
+      const th = 108 + 16;
+      const c = document.createElement('canvas');
+      c.width = cols * tw;
+      c.height = Math.ceil(list.length / cols) * th;
+      const x = c.getContext('2d');
+      x.fillStyle = '#111';
+      x.fillRect(0, 0, c.width, c.height);
+      list.forEach((t, i) => {
+        const tmp = document.createElement('canvas');
+        tmp.width = t.w;
+        tmp.height = t.h;
+        tmp.getContext('2d').putImageData(new ImageData(t.rgba, t.w, t.h), 0, 0);
+        const ox = (i % cols) * tw;
+        const oy = Math.floor(i / cols) * th;
+        x.drawImage(tmp, ox, oy + 16, 192, 108);
+        x.fillStyle = '#ddd';
+        x.font = '11px sans-serif';
+        x.fillText(t.label, ox + 4, oy + 12);
+      });
+      urls.push(c.toDataURL('image/png'));
+    }
+    return urls;
+  };
+
   window.runAll = function runAll({ filter, wantSheet }) {
-    const report = { effects: [], transitions: [], programs: 0, failures: [], notes: [], sheet: [] };
+    const report = { effects: [], transitions: [], programs: 0, failures: [], notes: [] };
     const fail = (msg) => report.failures.push(msg);
     const note = (msg) => report.notes.push(msg);
     const inA = readback(texA);
@@ -504,7 +536,7 @@ void main() { outColor = transition(v_uv); }`;
         if (name === 'A' && st.maxA < 1e-4) fail(`${def.type}: fully transparent at defaults`);
         if (st.maxAbs > 1e4) fail(`${def.type}: runaway values (${st.maxAbs}) on image ${name}`);
         if (name === 'A' && st.diff < 1e-3) note(`${def.type}: identity at defaults`);
-        if (wantSheet) report.sheet.push({ label: `${def.type}${name === 'B' ? ' (alpha)' : ''}`, rgba: Array.from(tile(px, out.w, out.h)), w: out.w, h: out.h, alpha: name === 'B' });
+        if (wantSheet) sheetTiles.push({ label: `${def.type}${name === 'B' ? ' (alpha)' : ''}`, rgba: tile(px, out.w, out.h), w: out.w, h: out.h });
       }
       entry.ms = Math.round(performance.now() - t0);
       // sweeps: NaN only
@@ -556,7 +588,7 @@ void main() { outColor = transition(v_uv); }`;
               const d = stats(px, inC).diff;
               if (d > 0.02) fail(`transition ${def.type}: p=1 does not match the incoming picture (max diff ${d.toFixed(3)}) ${JSON.stringify(sp)}`);
             }
-            if (wantSheet && si === 0 && !ov && (prog === 0.25 || prog === 0.5 || prog === 0.75)) report.sheet.push({ label: `${def.type} ${prog}`, rgba: Array.from(tile(px, W, H)), w: W, h: H });
+            if (wantSheet && si === 0 && !ov && (prog === 0.25 || prog === 0.5 || prog === 0.75)) sheetTiles.push({ label: `${def.type} ${prog}`, rgba: tile(px, W, H), w: W, h: H });
           }
         }
         si++;
@@ -610,39 +642,14 @@ try {
     console.log('all effect passes and transitions compile, link and render cleanly');
   }
 
-  if (sheetPath && report.sheet.length) {
+  if (sheetPath) {
     // Contact sheet(s): 8 columns, at most 8 rows per image (out.png, out-2.png, ...).
-    const perPage = 64;
-    for (let page0 = 0; page0 * perPage < report.sheet.length; page0++) {
-      const tiles = report.sheet.slice(page0 * perPage, (page0 + 1) * perPage);
-      const file = resolve(page0 === 0 ? sheetPath : sheetPath.replace(/(\.png)?$/i, `-${page0 + 1}.png`));
-      const dataUrl = await page.evaluate((list) => {
-        const cols = 8;
-        const tw = 192;
-        const th = 108 + 16;
-        const c = document.createElement('canvas');
-        c.width = cols * tw;
-        c.height = Math.ceil(list.length / cols) * th;
-        const x = c.getContext('2d');
-        x.fillStyle = '#111';
-        x.fillRect(0, 0, c.width, c.height);
-        list.forEach((t, i) => {
-          const tmp = document.createElement('canvas');
-          tmp.width = t.w;
-          tmp.height = t.h;
-          tmp.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(t.rgba), t.w, t.h), 0, 0);
-          const ox = (i % cols) * tw;
-          const oy = Math.floor(i / cols) * th;
-          x.drawImage(tmp, ox, oy + 16, 192, 108);
-          x.fillStyle = '#ddd';
-          x.font = '11px sans-serif';
-          x.fillText(t.label, ox + 4, oy + 12);
-        });
-        return c.toDataURL('image/png');
-      }, tiles);
-      writeFileSync(file, Buffer.from(dataUrl.split(',')[1], 'base64'));
+    const urls = await page.evaluate(() => window.makeSheets(64));
+    urls.forEach((url, i) => {
+      const file = resolve(i === 0 ? sheetPath : sheetPath.replace(/(\.png)?$/i, `-${i + 1}.png`));
+      writeFileSync(file, Buffer.from(url.split(',')[1], 'base64'));
       console.log(`contact sheet: ${file}`);
-    }
+    });
   }
 } finally {
   await browser.close();

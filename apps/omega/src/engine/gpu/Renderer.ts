@@ -758,9 +758,9 @@ export class Renderer {
         if (!(sz.w > 0 && sz.h > 0)) return null;
         w = sz.w;
         h = sz.h;
-        raw = this.uploadMedia(layer.clipId, img, src.sourceTime, w, h);
-        if (!raw) return null;
         const def = inputTransformDef(layer.inputTransform);
+        raw = this.uploadMedia(layer.clipId, img, src.sourceTime, w, h, def.code >= 3);
+        if (!raw) return null;
         code = def.code;
         gamut = def.gamut === 'rec709' ? null : inputGamutMatrix(def.id);
         break;
@@ -784,7 +784,12 @@ export class Renderer {
     }
     if (!(w > 0 && h > 0)) return null;
     const m = layerToFrame(layer.transform, w, h, ctx.graph.width, ctx.graph.height);
+    if (!m.every(Number.isFinite)) {
+      this.warnOnce(`nan-${layer.clipId}`, `[renderer] layer ${layer.clipId} has a non-finite transform; skipped`);
+      return null;
+    }
     const [ax, ay] = axisScales(m);
+    if (!(ax > 0 && ay > 0)) return null; // zero scale: nothing visible
     const k = workingScale(Math.max(ax * ctx.sx, ay * ctx.sy), w, h, this.maxTex);
     const ww = Math.max(1, Math.round(w * k));
     const wh = Math.max(1, Math.round(h * k));
@@ -856,6 +861,10 @@ export class Renderer {
 
   private gradePass(rt: RT, grade: ColorGrade | null, ctx: Ctx, matte: boolean): RT {
     if (!grade && !matte) return rt;
+    if (grade && !gradeIsFinite(grade)) {
+      this.warnOnce('grade-nan', '[renderer] a grade has non-finite values (bad keyframes?); grade skipped');
+      return rt;
+    }
     if (ctx.bypass && !matte) return rt;
     const g = grade;
     const lut = g && g.enabled && g.lut.id && g.lut.intensity !== 0 ? getLoadedLut(g.lut.id) : null;
@@ -1198,7 +1207,7 @@ export class Renderer {
     this.bindSamplers(p, { u_layer: img.tex, u_dst: dst?.tex });
     if (dec?.gamut) this.uMat3(p, 'u_gamut', dec.gamut);
     this.u2f(p, 'u_dstSize', fw, fh);
-    this.u1f(p, 'u_opacity', Math.min(Math.max(opacity, 0), 1));
+    this.u1f(p, 'u_opacity', Number.isFinite(opacity) ? Math.min(Math.max(opacity, 0), 1) : 1);
     this.u2f(p, 'u_layerPx', img.w, img.h);
     this.u2f(p, 'u_texSize', img.tw, img.th);
     this.u4f(p, 'u_crop', cl, ct, cr, cb);
@@ -1349,7 +1358,7 @@ export class Renderer {
   }
 
   /** Uploads any TexImageSource (never closes VideoFrames: the provider owns them). */
-  private upload(slot: Slot, src: TexImageSource, w: number, h: number): boolean {
+  private upload(slot: Slot, src: TexImageSource, w: number, h: number, highBitDepth = false): boolean {
     const gl = this.gl!;
     const t0 = this.now();
     try {
@@ -1358,7 +1367,9 @@ export class Renderer {
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
       gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
       gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, src);
+      // Log/HDR sources go to half float so 10-bit decodes are not quantized to 8 bits before linearizing.
+      if (highBitDepth) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT, src);
+      else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, src);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
       slot.w = w;
@@ -1374,11 +1385,11 @@ export class Renderer {
     }
   }
 
-  private uploadMedia(clipId: string, img: FrameImage, time: number, w: number, h: number): Raw | null {
+  private uploadMedia(clipId: string, img: FrameImage, time: number, w: number, h: number, highBitDepth: boolean): Raw | null {
     let slot = this.mediaSlots.get(clipId);
     // Immutable sources (VideoFrame, ImageBitmap, <img>) are re-uploaded only when they change.
     const mutable = isVideoEl(img) || isCanvasLike(img);
-    if (slot && !mutable && slot.src === img && slot.time === time) {
+    if (slot && !mutable && slot.src === img && slot.time === time && slot.key === (highBitDepth ? 'hbd' : '')) {
       slot.used = this.frameNo;
       return slot;
     }
@@ -1386,12 +1397,13 @@ export class Renderer {
       slot = this.newSlot();
       this.mediaSlots.set(clipId, slot);
     }
-    if (!this.upload(slot, img as TexImageSource, w, h)) {
+    if (!this.upload(slot, img as TexImageSource, w, h, highBitDepth)) {
       slot.src = undefined;
       return null;
     }
     slot.src = img;
     slot.time = time;
+    slot.key = highBitDepth ? 'hbd' : '';
     return slot;
   }
 
@@ -1548,6 +1560,18 @@ ${GLSL_TRANSITION_PRELUDE}
 ${glsl}
 void main() { outColor = transition(v_uv); }
 `;
+}
+
+/** True when every numeric grade value is finite (NaN from bad keyframes must not poison the image). */
+function gradeIsFinite(g: ColorGrade): boolean {
+  const f = Number.isFinite;
+  const w = (x: { r: number; g: number; b: number; y: number }) => f(x.r) && f(x.g) && f(x.b) && f(x.y);
+  const q = g.qualifier;
+  return (
+    f(g.exposure) && f(g.temperature) && f(g.tint) && f(g.contrast) && f(g.pivot) && f(g.saturation) && f(g.vibrance) && f(g.highlights) && f(g.shadows) &&
+    w(g.lift) && w(g.gamma) && w(g.gain) && w(g.offset) && f(g.lut.intensity) &&
+    f(q.hueCenter) && f(q.hueWidth) && f(q.satLow) && f(q.satHigh) && f(q.lumLow) && f(q.lumHigh) && f(q.softness) && f(q.hueShift) && f(q.saturation) && f(q.exposure)
+  );
 }
 
 /** Content key for synthetic sources: the raster only changes when this does. */

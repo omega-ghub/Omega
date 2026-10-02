@@ -85,19 +85,33 @@ export function openInSource(assetId: string) {
   ed().setSource({ assetId: a.id, time: a.markIn ?? 0 });
 }
 
-/** Insert / overwrite at the playhead: the timeline's action when it exists, else placeMedia directly. */
+/**
+ * Insert / overwrite at the playhead. Uses the timeline's own edit action when
+ * it is registered (it edits the Source monitor clip, so each asset is loaded
+ * there in turn and the previous Source clip is restored); otherwise places
+ * the media directly with the edit engine.
+ */
 export function editIntoTimeline(ids: string[], mode: EditMode) {
   const list = assets(ids);
   if (!list.length) return;
-  ed().select({ assetIds: list.map((a) => a.id) });
   const actionId = mode === 'insert' ? 'timeline.insert' : 'timeline.overwrite';
-  if (getAction(actionId) && runAction(actionId)) return;
+  if (getAction(actionId)) {
+    const prev = { ...ed().source };
+    for (const a of list) {
+      ed().setSource({ assetId: a.id, time: a.markIn ?? 0 });
+      ed().select({ assetIds: [a.id] });
+      if (!runAction(actionId)) break;
+    }
+    ed().setSource(prev);
+    ed().select({ assetIds: list.map((a) => a.id) });
+    return;
+  }
   const label = `${mode === 'insert' ? 'Insert' : 'Overwrite'} ${list.length === 1 ? list[0].name : `${list.length} clips`}`;
   try {
     let t = ed().playhead;
     ed().mutateSequence(label, (seq, project) => {
       for (const a of list) {
-        const created = new Set(placeMedia(project, seq, a.id, { start: t, mode }) ?? []);
+        const created = new Set(placeMedia(project, seq, a.id, { start: t, mode, sourceIn: a.markIn ?? undefined, sourceOut: a.markOut ?? undefined }) ?? []);
         for (const tr of seq.tracks) for (const c of tr.clips) if (created.has(c.id)) t = Math.max(t, c.start + c.duration);
       }
     });

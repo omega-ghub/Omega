@@ -28,6 +28,7 @@ import './media.css';
 const NO_ASSETS: MediaAsset[] = [];
 const NO_BINS: Bin[] = [];
 const NO_IDS: string[] = [];
+const NO_USED = new Set<string>();
 
 const FILTERS: { id: KindFilter; label: string }[] = [
   { id: 'all', label: 'All Media' },
@@ -57,10 +58,11 @@ export function MediaPanel({ className = '' }: { className?: string } = {}) {
 function Browser({ className }: { className: string }) {
   const assets = useEditor((s) => s.project?.assets ?? NO_ASSETS);
   const bins = useEditor((s) => s.project?.bins ?? NO_BINS);
-  const sequences = useEditor((s) => s.project?.sequences);
+  const ui = useMediaUi();
+  // clip usage is only needed for the Unused filter: do not re-render on every timeline edit otherwise
+  const sequences = useEditor((s) => (ui.filter === 'unused' ? s.project?.sequences : undefined));
   const seqFps = useEditor((s) => (s.project ? activeSequence(s.project).fps : 30));
   const selectedIds = useEditor((s) => s.selection.assetIds ?? NO_IDS);
-  const ui = useMediaUi();
   const importing = useStore(mediaJobs, (s) => s.importing);
   const proxyJobs = useStore(mediaJobs, (s) => s.proxies);
   const rootRef = useRef<HTMLElement>(null);
@@ -71,7 +73,7 @@ function Browser({ className }: { className: string }) {
 
   // ---- derived lists ----
   const openBinId = ui.openBinId && bins.some((b) => b.id === ui.openBinId) ? ui.openBinId : null;
-  const used = useMemo(() => (sequences ? usedAssetIds({ sequences }) : new Set<string>()), [sequences]);
+  const used = useMemo(() => (sequences ? usedAssetIds({ sequences }) : NO_USED), [sequences]);
   const flat = ui.query.trim() !== '' || ui.filter !== 'all';
   const visible = useMemo(() => {
     const scope = assetsInScope({ assets, bins }, openBinId, flat);

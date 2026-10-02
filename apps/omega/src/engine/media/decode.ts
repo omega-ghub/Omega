@@ -20,7 +20,9 @@
 // decodeFrameAt — random access (paused viewer, stills, hover scrub):
 //   Returns an ImageBitmap from a shared LRU cache (keyed by asset, source
 //   file, frame index and size; memory-capped). Identical in-flight requests
-//   are de-duplicated. The cache owns the bitmaps: never close them.
+//   are de-duplicated. The cache owns the bitmaps: never close them. Pass
+//   { latest: true } while scrubbing so superseded requests are skipped (they
+//   resolve null) instead of queueing up behind each other.
 
 import { EncodedPacketSink, VideoSampleSink, type Input, type InputVideoTrack, type UrlSource, type VideoSample } from 'mediabunny';
 import type { FrameImage } from '../render/frames';

@@ -1,14 +1,15 @@
 // Decoded-audio cache. Assets are decoded with Mediabunny (UrlSource over the
-// omega-media:// protocol + AudioBufferSink), down-mixed to at most stereo,
+// omega-media:// protocol + AudioSampleSink) in a pool of dedicated workers
+// (falling back to the main thread when workers are unavailable), down-mixed to at most stereo,
 // resampled to the sequence rate with an OfflineAudioContext, and kept in an
 // LRU with a memory cap. Long assets are decoded per needed range instead of
 // whole; reversed copies are made on demand for reversed clips. Waveform peaks
 // are computed during full decodes. Never throws on bad media: failures
 // resolve to null and are remembered.
 
-import { ALL_FORMATS, AudioBufferSink, Input, UrlSource } from 'mediabunny';
 import type { MediaAsset } from '../../state/types';
-import { PeakBuilder, type Peaks } from './peaks';
+import { decodeAudio, type DecodeRequest, type DecodeResult } from './decodeCore';
+import type { Peaks } from './peaks';
 
 /** Bytes of float audio kept in memory before least-recently-used ranges are dropped. */
 export const MEMORY_CAP = 1.5 * 1024 ** 3;
@@ -250,125 +251,102 @@ export function ensurePeaks(asset: MediaAsset, sampleRate: number): Promise<Peak
   return p.then(() => peakStore.get(asset.id) ?? null);
 }
 
-async function yieldToUi() {
-  await new Promise((r) => setTimeout(r, 0));
+// ---------------------------------------------------------------------------
+// Worker pool
+// ---------------------------------------------------------------------------
+
+interface PoolWorker {
+  w: Worker;
+  busy: boolean;
+}
+
+let pool: PoolWorker[] | null = null;
+let workersBroken = false;
+let jobSeq = 0;
+
+function makeWorker(): Worker | null {
+  try {
+    return new Worker(new URL('./decode.worker.ts', import.meta.url), { type: 'module', name: 'omega-audio-decode' });
+  } catch {
+    return null;
+  }
+}
+
+/** Decodes in a worker; rejects when the worker itself cannot run (not on bad media). */
+function decodeInWorker(req: DecodeRequest): Promise<DecodeResult> {
+  if (workersBroken || typeof Worker === 'undefined') return Promise.reject(new Error('no workers'));
+  pool ??= [];
+  let slot = pool.find((p) => !p.busy);
+  if (!slot && pool.length < MAX_CONCURRENT) {
+    const w = makeWorker();
+    if (!w) {
+      workersBroken = true;
+      return Promise.reject(new Error('worker creation failed'));
+    }
+    slot = { w, busy: false };
+    pool.push(slot);
+  }
+  if (!slot) return Promise.reject(new Error('pool exhausted'));
+  const s = slot;
+  s.busy = true;
+  const id = ++jobSeq;
+  return new Promise<DecodeResult>((resolve, reject) => {
+    const done = () => {
+      s.busy = false;
+      s.w.removeEventListener('message', onMsg);
+      s.w.removeEventListener('error', onErr);
+    };
+    const onMsg = (e: MessageEvent<{ id: number; res: DecodeResult }>) => {
+      if (e.data?.id !== id) return;
+      done();
+      resolve(e.data.res);
+    };
+    const onErr = (e: Event) => {
+      done();
+      e.preventDefault?.();
+      // The worker script failed to load or crashed: stop using workers.
+      workersBroken = true;
+      pool = (pool ?? []).filter((p) => p !== s);
+      s.w.terminate();
+      reject(new Error('decode worker failed'));
+    };
+    s.w.addEventListener('message', onMsg);
+    s.w.addEventListener('error', onErr);
+    s.w.postMessage({ id, req });
+  });
+}
+
+async function runDecode(req: DecodeRequest): Promise<DecodeResult> {
+  try {
+    const res = await decodeInWorker(req);
+    if (res.ok || res.noAudio) return res;
+    // Network/codec support can differ in workers: retry on the main thread once.
+  } catch {
+    /* fall back below */
+  }
+  return decodeAudio(req, { yieldEveryMs: 12 });
 }
 
 async function decode(asset: MediaAsset, targetRate: number, from: number, to: number, full: boolean, retain = true): Promise<DecodedRange | null> {
   const url = window.omega.media.urlFor(asset.path);
-  let input: Input | null = null;
   try {
-    input = new Input({ source: new UrlSource(url), formats: ALL_FORMATS });
-    const track = await input.getPrimaryAudioTrack();
-    if (!track) {
-      failed.set(asset.id, 'no audio track');
+    const res = await runDecode({ url, from, to, peaks: full, retain, durationHint: asset.duration || 0 });
+    if (!res.ok) {
+      console.warn(`Audio decode failed for ${asset.name}: ${res.error}`);
+      failed.set(asset.id, res.error ?? 'decode failed');
       return null;
     }
-    if (!(await track.canDecode())) {
-      failed.set(asset.id, 'audio codec cannot be decoded');
-      return null;
-    }
-    const srcRate = await track.getSampleRate();
-    let duration = asset.duration;
-    try {
-      duration = await input.computeDuration();
-    } catch {
-      /* keep the probed duration */
-    }
-    const known = duration > 0 ? duration : asset.duration > 0 ? asset.duration : Infinity;
-    const end = Math.min(to, known + 0.25);
-    const startT = Math.max(0, from);
-    const span = Number.isFinite(end) ? end - startT : 60;
-    const estimate = Math.max(1, Math.ceil(span * srcRate) + Math.ceil(srcRate * 0.05));
-    const sink = new AudioBufferSink(track);
-    const peaks = full ? new PeakBuilder(srcRate, estimate) : null;
-
-    let chans: Float32Array<ArrayBuffer>[] = [];
-    let cap = 0;
-    let channels = 0;
-    let writePos = -1; // frames relative to startT
-    let maxWritten = 0;
-    let lastYield = performance.now();
-    const ensureCap = (need: number) => {
-      if (!retain || need <= cap) return;
-      const next = Math.max(need, Math.ceil(cap * 1.25));
-      chans = chans.map((c) => {
-        const n = new Float32Array(next);
-        n.set(c);
-        return n;
-      });
-      cap = next;
-    };
-    const mix = (b: AudioBuffer): Float32Array[] => {
-      const n = b.numberOfChannels;
-      if (n <= 2) return Array.from({ length: n }, (_, c) => b.getChannelData(c));
-      // 5.1 → stereo (Web Audio "speakers" down-mix); other layouts keep the first two channels.
-      const L = new Float32Array(b.getChannelData(0));
-      const R = new Float32Array(b.getChannelData(1));
-      if (n >= 6) {
-        const C = b.getChannelData(2);
-        const SL = b.getChannelData(4);
-        const SR = b.getChannelData(5);
-        for (let i = 0; i < L.length; i++) {
-          L[i] += Math.SQRT1_2 * (C[i] + SL[i]);
-          R[i] += Math.SQRT1_2 * (C[i] + SR[i]);
-        }
-      }
-      return [L, R];
-    };
-
-    for await (const wb of sink.buffers(startT, end)) {
-      const data = mix(wb.buffer);
-      const n = wb.buffer.length;
-      if (!channels) {
-        channels = data.length;
-        if (retain) {
-          cap = estimate;
-          chans = Array.from({ length: channels }, () => new Float32Array(cap));
-        }
-      }
-      const pos = Math.round((wb.timestamp - startT) * srcRate);
-      if (writePos < 0) {
-        writePos = pos;
-        if (peaks && pos > 0) peaks.pushSilence(pos);
-      } else if (Math.abs(pos - writePos) > srcRate * 0.002) {
-        // a gap (or overlap) in the stream: follow the timestamps
-        if (peaks && pos > writePos) peaks.pushSilence(pos - writePos);
-        writePos = pos;
-      }
-      const skip = writePos < 0 ? -writePos : 0;
-      if (peaks && n > skip) peaks.push(data.length === channels ? data : data.slice(0, channels), skip, n - skip);
-      if (retain && n > skip) {
-        ensureCap(writePos + n);
-        for (let c = 0; c < channels; c++) {
-          const src = data[Math.min(c, data.length - 1)];
-          chans[c].set(skip ? src.subarray(skip) : src, writePos + skip);
-        }
-      }
-      writePos += n;
-      maxWritten = Math.max(maxWritten, writePos);
-      if (performance.now() - lastYield > 24) {
-        await yieldToUi();
-        lastYield = performance.now();
-      }
-    }
-
-    if (peaks) setPeaks(asset.id, peaks.finish());
+    if (res.peaks) setPeaks(asset.id, res.peaks);
     if (!retain) return null;
-    if (!channels) {
-      failed.set(asset.id, 'no decodable audio');
-      return null;
-    }
-    const length = Math.max(1, Math.min(cap, maxWritten));
-    let buffer = new AudioBuffer({ length, numberOfChannels: channels, sampleRate: srcRate });
-    for (let c = 0; c < channels; c++) buffer.copyToChannel(chans[c].subarray(0, length), c);
-    chans = [];
-    if (srcRate !== targetRate) buffer = await resample(buffer, targetRate);
+    let buffer = new AudioBuffer({ length: res.length, numberOfChannels: res.channels.length, sampleRate: res.sampleRate });
+    res.channels.forEach((c, i) => buffer.copyToChannel(c as Float32Array<ArrayBuffer>, i));
+    res.channels.length = 0;
+    if (res.sampleRate !== targetRate) buffer = await resample(buffer, targetRate);
     const e: DecodedRange = {
       key: asset.id,
       sampleRate: targetRate,
-      start: startT,
-      end: startT + buffer.duration,
+      start: res.start,
+      end: res.start + buffer.duration,
       buffer,
       reversed: null,
       full,
@@ -382,12 +360,6 @@ async function decode(asset: MediaAsset, targetRate: number, from: number, to: n
     console.warn(`Audio decode failed for ${asset.name}`, err);
     failed.set(asset.id, (err as Error)?.message ?? 'decode failed');
     return null;
-  } finally {
-    try {
-      input?.dispose();
-    } catch {
-      /* ignore */
-    }
   }
 }
 

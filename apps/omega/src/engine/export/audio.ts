@@ -18,7 +18,7 @@ import type { Project } from '../../state/types';
 import { audioChunks, sampleCount } from './plan';
 import { LoudnessMeter, measureLoudness, normalizationGainDb, TruePeakLimiter } from './loudness';
 import type { LoudnessSettings, TimeRange } from './types';
-import { ExportFailed, throwIfAborted, yieldToEventLoop } from './util';
+import { ExportFailed, exportDebug, throwIfAborted, yieldToEventLoop } from './util';
 
 const SINGLE_MAX_SECONDS = 10 * 60;
 const CHUNK_SECONDS = 120;
@@ -61,6 +61,8 @@ export class AudioProgram {
   private gainDb: number | null = null;
   report: LoudnessReport | null = null;
   readonly notes: string[] = [];
+  /** Cancels mixdowns in flight. */
+  signal?: AbortSignal;
 
   constructor(
     private readonly project: Project,
@@ -82,9 +84,12 @@ export class AudioProgram {
   private async render(from: number, to: number): Promise<Planar> {
     const sr = this.sampleRate;
     let buf: AudioBuffer;
+    const t0 = performance.now();
     try {
-      buf = await audioEngine.renderMix(this.project, this.sequenceId, this.range.start + from / sr, this.range.start + to / sr, sr);
+      buf = await audioEngine.renderMix(this.project, this.sequenceId, this.range.start + from / sr, this.range.start + to / sr, sr, undefined, this.signal);
+      exportDebug('renderMix', `${((to - from) / sr).toFixed(1)} s`, `${(performance.now() - t0).toFixed(0)} ms`);
     } catch (err) {
+      throwIfAborted(this.signal);
       throw new ExportFailed(`The audio mixdown failed: ${(err as Error).message}`);
     }
     const len = to - from;

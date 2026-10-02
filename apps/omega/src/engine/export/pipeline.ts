@@ -48,7 +48,7 @@ import { estimateBytes, frameCount, frameTime, resolveFps, resolveOutputSize, re
 import { AUDIO_CODEC_LABEL, CONTAINER_AUDIO_CODECS, CONTAINER_VIDEO_CODECS, codecsForContainer, VIDEO_CODEC_LABEL } from './presets';
 import type { AudioCodecId, ExportProgress, ExportSettings, HandoffFormat, PreflightIssue, PresetLimits, TimeRange, VideoCodecId } from './types';
 import { rangeUsage, shiftedSequence, type RangeUsage } from './usage';
-import { ExportCancelled, ExportFailed, errorMessage, isCancel, throwIfAborted, withTimeout, yieldToEventLoop } from './util';
+import { ExportCancelled, ExportFailed, errorMessage, exportDebug, isCancel, throwIfAborted, withTimeout, yieldToEventLoop } from './util';
 import { openFileSink, type FileSink } from './writer';
 import { formatBytesShort, formatClock } from './format';
 
@@ -262,7 +262,9 @@ export async function planExport(job: ExportJob, opts: PlanOptions = {}): Promis
     for (const asset of usage.videoAssets) {
       if (asset.offline) continue;
       throwIfAborted(opts.signal);
+      const t0 = performance.now();
       const mode = await probeDecode(asset).catch(() => null);
+      exportDebug('decode probe', asset.name, mode, `${(performance.now() - t0).toFixed(0)} ms`);
       if (mode) plan.decode.set(asset.id, mode);
       else unreadable.push(asset.name);
     }
@@ -317,7 +319,9 @@ export async function exportJob(job: ExportJob, onProgress: (p: ExportProgress) 
   progress.emit({ phase: 'preflight', fraction: 0, message: 'Checking media and encoders' }, true);
   throwIfAborted(signal);
 
+  exportDebug('preflight', job.name, job.outputPath);
   const plan = await planExport(job, { deep: true, diskSpace: true, signal });
+  exportDebug('plan', plan.size, plan.fps, plan.frames, plan.videoCodec, plan.audioCodec, plan.issues.map((i) => i.message));
   for (const i of plan.issues) {
     if (i.level === 'warning') warnings.push(i.message);
     if (i.level !== 'error') note(`${i.level}: ${i.message}`);
@@ -491,6 +495,7 @@ async function renderMedia(job: ExportJob, plan: ExportPlan, result: ExportResul
       audioSource = audioSourceFor(plan.audioCodec, settings.audio.bitrateKbps);
       output.addAudioTrack(audioSource);
       program = new AudioProgram(job.project, job.sequenceId, job.range, settings.audio.sampleRate, settings.audio.channels, settings.loudness);
+      program.signal = signal;
       result.log.push(`Audio: ${AUDIO_CODEC_LABEL[plan.audioCodec]} ${settings.audio.sampleRate / 1000} kHz ${settings.audio.channels === 1 ? 'mono' : 'stereo'}${plan.audioCodec.startsWith('pcm-') || plan.audioCodec === 'flac' ? '' : ` ${settings.audio.bitrateKbps} kbps`}`);
     }
     if (!videoSource && !audioSource) throw new ExportFailed('Nothing to export: the range has no audio.');
@@ -500,6 +505,7 @@ async function renderMedia(job: ExportJob, plan: ExportPlan, result: ExportResul
       /* not every container takes tags */
     }
     await output.start();
+    exportDebug('output started', settings.container);
 
     // ---- loudness analysis (pass 1) ----
     const analyzeSpan: [number, number] = program && settings.loudness.normalize ? [0.01, isVideo ? 0.08 : 0.4] : [0.01, 0.01];
@@ -524,6 +530,7 @@ async function renderMedia(job: ExportJob, plan: ExportPlan, result: ExportResul
         }
         await withTimeout(audioSource!.add(next.value), ENCODE_TIMEOUT_MS, 'The audio encoder stopped responding.', signal);
         audioUntil += next.value.duration;
+        exportDebug('audio until', audioUntil.toFixed(2));
         if (!videoSource) progress.emit({ phase: 'audio', fraction: analyzeSpan[1] + (0.97 - analyzeSpan[1]) * Math.min(1, audioUntil / Math.max(0.001, program!.duration)), message: 'Encoding audio' });
       }
     };
@@ -531,12 +538,21 @@ async function renderMedia(job: ExportJob, plan: ExportPlan, result: ExportResul
     if (videoSource && frameRenderer) {
       const span: [number, number] = [analyzeSpan[1], 0.97];
       let lastYield = performance.now();
+      const timing = { audio: 0, render: 0, encode: 0 };
       for (let i = 0; i < plan.frames; i++) {
         throwIfAborted(signal);
         const ts = i / plan.fps;
+        const t0 = performance.now();
         await pumpAudio(ts + AUDIO_LOOKAHEAD);
+        const t1 = performance.now();
         await frameRenderer.render(frameTime(job.range, plan.fps, i), i, signal);
+        const t2 = performance.now();
         await withTimeout(videoSource.add(ts, 1 / plan.fps), ENCODE_TIMEOUT_MS, 'The video encoder stopped responding.', signal);
+        const t3 = performance.now();
+        timing.audio += t1 - t0;
+        timing.render += t2 - t1;
+        timing.encode += t3 - t2;
+        if (i % 10 === 0 || i === plan.frames - 1) exportDebug(`frame ${i + 1}/${plan.frames}`, `audio ${timing.audio.toFixed(0)} ms`, `render ${timing.render.toFixed(0)} ms`, `encode ${timing.encode.toFixed(0)} ms`, `sink ${sink.written()} B`);
         progress.frame('rendering', i + 1, plan.frames, span);
         if (performance.now() - lastYield > YIELD_EVERY_MS) {
           await yieldToEventLoop();
