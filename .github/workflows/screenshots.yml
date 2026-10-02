@@ -36,15 +36,21 @@ jobs:
         run: |
           media=$(find "$RUNNER_TEMP/media" -maxdepth 1 -type f \( -name '*.mp4' -o -name '*.webm' -o -name '*.wav' -o -name '*.m4a' -o -name '*.ogg' -o -name '*.png' \) | sort | paste -sd: -)
           echo "media: $media"
-          OMEGA_SMOKE_MEDIA="$media" xvfb-run -a -s "-screen 0 1600x960x24" node scripts/screenshots.mjs "$RUNNER_TEMP/shots"
+          mkdir -p "$RUNNER_TEMP/shots"
+          set +e
+          OMEGA_SMOKE_MEDIA="$media" xvfb-run -a -s "-screen 0 1600x960x24" node scripts/screenshots.mjs "$RUNNER_TEMP/shots" 2>&1 | tee "$RUNNER_TEMP/shots/tour.log"
+          echo "exit: ${PIPESTATUS[0]}" >> "$RUNNER_TEMP/shots/tour.log"
+          exit 0
       - name: Commit screenshots
         run: |
           dest=../../docs/screenshots/latest
           rm -rf "$dest" && mkdir -p "$dest"
-          cp "$RUNNER_TEMP"/shots/*.png "$dest"/
+          cp "$RUNNER_TEMP"/shots/*.png "$dest"/ 2>/dev/null || true
+          cp "$RUNNER_TEMP"/shots/tour.log "$dest"/
           cd ../..
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
           git add docs/screenshots/latest
           git commit -m "Update screenshots [skip ci]" || exit 0
+          git pull --rebase -q || true
           git push
