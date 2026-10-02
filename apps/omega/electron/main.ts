@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol, shell, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol, shell, nativeImage, session, systemPreferences } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -352,7 +352,60 @@ function registerIpc() {
     await fsp.writeFile(p, Buffer.from(data));
   });
   ipcMain.on('file:showInFolder', (_e, p: string) => shell.showItemInFolder(p));
+
+  // Streaming writes (long exports): positioned writes into `<path>.partial`,
+  // renamed into place on close so a crash or cancel never leaves a truncated
+  // file under the real name.
+  ipcMain.handle('file:openWrite', async (_e, p: string) => {
+    await fsp.mkdir(path.dirname(p), { recursive: true });
+    const partial = `${p}.partial`;
+    const fh = await fsp.open(partial, 'w');
+    const id = nextWriteHandle++;
+    writeHandles.set(id, { fh, path: p, partial });
+    return id;
+  });
+  ipcMain.handle('file:writeAt', async (_e, id: number, data: ArrayBuffer | Uint8Array, position: number) => {
+    const h = writeHandles.get(id);
+    if (!h) throw new Error('This export file is no longer open.');
+    const buf = data instanceof Uint8Array ? Buffer.from(data.buffer, data.byteOffset, data.byteLength) : Buffer.from(data);
+    let off = 0;
+    while (off < buf.length) {
+      const { bytesWritten } = await h.fh.write(buf, off, buf.length - off, position + off);
+      if (bytesWritten <= 0) throw new Error('Disk write failed (the disk may be full).');
+      off += bytesWritten;
+    }
+  });
+  ipcMain.handle('file:closeWrite', async (_e, id: number, discard: boolean) => {
+    const h = writeHandles.get(id);
+    if (!h) return 0;
+    writeHandles.delete(id);
+    const { size } = await h.fh.stat();
+    await h.fh.close();
+    if (discard) {
+      await fsp.rm(h.partial, { force: true });
+      return 0;
+    }
+    await fsp.rename(h.partial, h.path);
+    return size;
+  });
+  ipcMain.handle('file:freeSpace', async (_e, p: string) => {
+    let dir = p;
+    for (let i = 0; i < 64; i++) {
+      try {
+        const s = await fsp.statfs(dir);
+        return Number(s.bavail) * Number(s.bsize);
+      } catch {
+        const parent = path.dirname(dir);
+        if (parent === dir) return null;
+        dir = parent;
+      }
+    }
+    return null;
+  });
 }
+
+const writeHandles = new Map<number, { fh: Awaited<ReturnType<typeof fsp.open>>; path: string; partial: string }>();
+let nextWriteHandle = 1;
 
 function notifyRecentsChanged() {
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send('recents:changed');
@@ -390,9 +443,37 @@ app.setName('Omega');
 // allow Chromium's software rasterizer as a fallback. Content is local and trusted.
 app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 
+// Permissions (microphone for voiceover recording, etc.): granted to the
+// app's own pages only (hub, installed modules, dev server), never to
+// anything else that might end up in a window.
+function isAppUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  if (url.startsWith('omega-module:') || url.startsWith('file:')) return true;
+  try {
+    return !!process.env.VITE_DEV_SERVER_URL && new URL(url).origin === new URL(process.env.VITE_DEV_SERVER_URL).origin;
+  } catch {
+    return false;
+  }
+}
+
+function installPermissionHandlers() {
+  const ses = session.defaultSession;
+  ses.setPermissionRequestHandler((wc, permission, callback, details) => {
+    if (!isAppUrl(details.requestingUrl || wc.getURL())) return callback(false);
+    const wantsMic = permission === 'media' && (details as { mediaTypes?: string[] }).mediaTypes?.includes('audio');
+    if (wantsMic && process.platform === 'darwin') {
+      systemPreferences.askForMediaAccess('microphone').then(callback, () => callback(false));
+      return;
+    }
+    callback(true);
+  });
+  ses.setPermissionCheckHandler((_wc, _permission, requestingOrigin) => isAppUrl(requestingOrigin));
+}
+
 app.whenReady().then(() => {
   protocol.handle('omega-media', serveMedia);
   protocol.handle('omega-module', serveModule);
+  installPermissionHandlers();
   registerIpc();
   createWindow();
   app.on('activate', () => {

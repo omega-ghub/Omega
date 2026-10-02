@@ -114,7 +114,6 @@ export class LoudnessMeter {
   private subEnergy: number[] = [];
   private subCount: number[] = [];
   private samplePeak = 0;
-  private readonly tpChans: Float32Array[][] = [];
 
   constructor(sampleRate: number, channels: number) {
     this.sampleRate = sampleRate;

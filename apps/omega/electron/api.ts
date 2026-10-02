@@ -94,6 +94,17 @@ export interface OmegaApi {
     /** Absolute path of a File dropped from the OS (drag & drop import). */
     pathForFile(file: File): string;
     showInFolder(path: string): void;
+    /**
+     * Streaming writes for large exports, so a file never has to fit in memory.
+     * Data goes to `<path>.partial`; closeWrite renames it to `path` (replacing
+     * an existing file), or deletes it when `discard` is set. Resolves with the
+     * final size in bytes.
+     */
+    openWrite(path: string): Promise<number>;
+    writeAt(handle: number, data: ArrayBuffer, position: number): Promise<void>;
+    closeWrite(handle: number, opts?: { discard?: boolean }): Promise<number>;
+    /** Free bytes on the volume holding `path` (or its nearest existing parent), null if unknown. */
+    freeSpace(path: string): Promise<number | null>;
   };
 }
 

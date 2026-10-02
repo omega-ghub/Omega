@@ -40,6 +40,7 @@ import {
 } from 'react';
 import { useEditor } from '../../../state/store';
 import { activeSequence, findClip } from '../../../state/types';
+import type { Clip } from '../../../state/types';
 import { clearKeyframes, KEY_TOLERANCE, paramAt, removeKeyframeAt, setKeyframe } from '../../../engine/keyframes';
 import { formatTimecode, fromFrames, parseTimecode, toFrames } from '../../../engine/time';
 import { transport } from '../../../engine/playback/transport';
@@ -751,63 +752,90 @@ const KF_NOCLIP = -1;
 
 type EditorSnapshot = ReturnType<typeof useEditor.getState>;
 
-function kfBits(s: EditorSnapshot, clipId: string, path: string): number {
+/** One param path, or a group animated together (e.g. position x + y, a color wheel's r/g/b/y). */
+export type ParamPaths = string | readonly string[];
+
+const asList = (p: ParamPaths): readonly string[] => (typeof p === 'string' ? [p] : p);
+
+function kfBits(s: EditorSnapshot, clipId: string, paths: ParamPaths): number {
   if (!s.project) return KF_NOCLIP;
   const clip = findClip(activeSequence(s.project), clipId)?.clip;
   if (!clip) return KF_NOCLIP;
   const raw = s.playhead - clip.start;
   let bits = raw < -KEY_TOLERANCE || raw > clip.duration + KEY_TOLERANCE ? KF_OUTSIDE : 0;
-  const list = clip.keyframes[path];
-  if (!list?.length) return bits;
-  bits |= KF_ANIM;
-  for (const k of list) {
-    if (Math.abs(k.t - raw) <= KEY_TOLERANCE) bits |= KF_AT;
-    else if (k.t < raw) bits |= KF_PREV;
-    else bits |= KF_NEXT;
+  for (const path of asList(paths)) {
+    const list = clip.keyframes[path];
+    if (!list?.length) continue;
+    bits |= KF_ANIM;
+    for (const k of list) {
+      if (Math.abs(k.t - raw) <= KEY_TOLERANCE) bits |= KF_AT;
+      else if (k.t < raw) bits |= KF_PREV;
+      else bits |= KF_NEXT;
+    }
   }
   return bits;
 }
 
-/** Toggles animation of a param at the playhead (stopwatch). */
-export function toggleAnimation(clipId: string, path: string): void {
+function groupLabel(paths: ParamPaths, clip: Clip): string {
+  const list = asList(paths);
+  if (list.length === 1) return paramLabel(list[0], clip);
+  // 'Position X' + 'Position Y' → 'Position'
+  const names = list.map((p) => paramLabel(p, clip));
+  const words = names[0].split(' ');
+  while (words.length > 1 && !names.every((n) => n.startsWith(words.join(' ')))) words.pop();
+  const common = words.join(' ');
+  return names.every((n) => n.startsWith(common)) && common ? common.replace(/\s+(X|Y|width|height)$/i, '') : names.join(', ');
+}
+
+/** Toggles animation of a param (or group) at the playhead (stopwatch). */
+export function toggleAnimation(clipId: string, paths: ParamPaths): void {
   const clip = getClip(clipId);
   if (!clip) return;
+  const list = asList(paths);
   const playhead = useEditor.getState().playhead;
-  const name = paramLabel(path, clip);
-  const animated = !!clip.keyframes[path]?.length;
+  const name = groupLabel(paths, clip);
+  const animated = list.some((p) => !!clip.keyframes[p]?.length);
   editClip(clipId, animated ? `Stop animating ${name}` : `Animate ${name}`, (c) => {
     const local = localTime(c, playhead);
-    if (animated) clearKeyframes(c, path, local);
-    else setKeyframe(c, path, local, paramAt(c, path, local));
+    for (const path of list) {
+      if (animated) clearKeyframes(c, path, local);
+      else setKeyframe(c, path, local, paramAt(c, path, local));
+    }
   });
 }
 
 /** Adds a keyframe at the playhead (current value), or removes the one there. */
-export function toggleKeyframeAtPlayhead(clipId: string, path: string): void {
+export function toggleKeyframeAtPlayhead(clipId: string, paths: ParamPaths): void {
   const clip = getClip(clipId);
   if (!clip) return;
+  const list = asList(paths);
   const playhead = useEditor.getState().playhead;
   const local = localTime(clip, playhead);
-  const list = clip.keyframes[path] ?? [];
-  const hit = list.some((k) => Math.abs(k.t - local) <= KEY_TOLERANCE);
-  const name = paramLabel(path, clip);
+  const hit = list.some((p) => (clip.keyframes[p] ?? []).some((k) => Math.abs(k.t - local) <= KEY_TOLERANCE));
+  const name = groupLabel(paths, clip);
   editClip(clipId, hit ? `Remove ${name} keyframe` : `Add ${name} keyframe`, (c) => {
-    if (!hit) {
-      setKeyframe(c, path, local, paramAt(c, path, local));
-      return;
+    for (const path of list) {
+      if (!hit) {
+        setKeyframe(c, path, local, paramAt(c, path, local));
+        continue;
+      }
+      const keys = c.keyframes[path] ?? [];
+      if (!keys.some((k) => Math.abs(k.t - local) <= KEY_TOLERANCE)) continue;
+      // Removing the last keyframe stops animation but keeps its value.
+      if (keys.length <= 1) clearKeyframes(c, path, local);
+      else removeKeyframeAt(c, path, local);
     }
-    // Removing the last keyframe stops animation but keeps its value.
-    if ((c.keyframes[path]?.length ?? 0) <= 1) clearKeyframes(c, path, local);
-    else removeKeyframeAt(c, path, local);
   });
 }
 
-/** Seeks to the previous/next keyframe of a param (or of every param when path is omitted). */
-export function seekKeyframe(clipId: string, dir: -1 | 1, path?: string): boolean {
+/** Seeks to the previous/next keyframe of a param (or of every param when paths is omitted). */
+export function seekKeyframe(clipId: string, dir: -1 | 1, paths?: ParamPaths): boolean {
   const clip = getClip(clipId);
   if (!clip) return false;
   const local = useEditor.getState().playhead - clip.start;
-  const times = path ? (clip.keyframes[path] ?? []).map((k) => k.t) : Object.values(clip.keyframes).flatMap((l) => l.map((k) => k.t));
+  const times = paths
+    ? asList(paths).flatMap((p) => (clip.keyframes[p] ?? []).map((k) => k.t))
+    : Object.values(clip.keyframes).flatMap((l) => l.map((k) => k.t));
   let best: number | null = null;
   for (const t of times) {
     if (dir > 0 && t > local + KEY_TOLERANCE && (best === null || t < best)) best = t;
@@ -820,8 +848,8 @@ export function seekKeyframe(clipId: string, dir: -1 | 1, path?: string): boolea
 
 export interface KeyframeButtonProps {
   clipId: string;
-  /** Param path, e.g. 'transform.opacity', 'effects.<id>.<key>'. */
-  path: string;
+  /** Param path, e.g. 'transform.opacity' or 'effects.<id>.<key>'; an array animates the group together. */
+  path: ParamPaths;
   /** Hide the ◀ ▶ navigation arrows (stopwatch + diamond only). */
   compact?: boolean;
   'data-testid'?: string;
@@ -832,11 +860,12 @@ export interface KeyframeButtonProps {
 export function KeyframeButton(props: KeyframeButtonProps) {
   const { clipId, path, compact, className } = props;
   const bits = useEditor((s) => kfBits(s, clipId, path));
+  const pathKey = asList(path).join('+');
   if (bits === KF_NOCLIP) return <span className={cx('ins-kf', className)} />;
   const animated = !!(bits & KF_ANIM);
   const at = !!(bits & KF_AT);
   const outside = !!(bits & KF_OUTSIDE);
-  const tid = props['data-testid'] ?? `ins-kf-${path}`;
+  const tid = props['data-testid'] ?? `ins-kf-${pathKey}`;
   return (
     <span className={cx('ins-kf', animated && 'ins-kf--on', className)} data-testid={tid}>
       <button
@@ -1120,7 +1149,7 @@ export interface ParamRowProps {
   children?: ReactNode;
   /** With `path`, shows a KeyframeButton for {clipId, path}. */
   clipId?: string;
-  path?: string;
+  path?: ParamPaths;
   /** Tooltip on the label. */
   hint?: string;
   /** Double-clicking the label calls this (e.g. reset to default). */

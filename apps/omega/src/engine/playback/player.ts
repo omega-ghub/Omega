@@ -221,6 +221,25 @@ export class ProgramPlayer implements TransportImpl {
     this.emitState();
   }
 
+  /** Diagnostics (tests, support): mean luma 0..255 and coverage of the last rendered frame. */
+  probe(): { mean: number; nonBlack: number; width: number; height: number } | null {
+    if (!this.renderer) return null;
+    try {
+      const px = this.renderer.readPixels(160);
+      let sum = 0;
+      let lit = 0;
+      const n = px.width * px.height;
+      for (let i = 0; i < n; i++) {
+        const y = 0.2126 * px.data[i * 4] + 0.7152 * px.data[i * 4 + 1] + 0.0722 * px.data[i * 4 + 2];
+        sum += y;
+        if (y > 12) lit++;
+      }
+      return { mean: n ? sum / n : 0, nonBlack: n ? lit / n : 0, width: px.width, height: px.height };
+    } catch {
+      return null;
+    }
+  }
+
   private emitTime(): void {
     for (const l of this.timeListeners) l();
   }

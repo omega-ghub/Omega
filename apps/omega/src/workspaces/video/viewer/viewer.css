@@ -1,0 +1,664 @@
+/* ==========================================================================
+   Viewer package (program + source monitors). Prefix: vw-
+   Built on the shell's tokens and .panel / .icon-btn classes.
+   ========================================================================== */
+
+.vw-monitor {
+  height: 100%;
+  min-height: 0;
+  container-type: inline-size;
+  --vw-wave: color-mix(in srgb, var(--accent) 70%, white 10%);
+}
+.vw-monitor.is-focused {
+  box-shadow:
+    inset 0 0 0 1px var(--border-subtle),
+    inset 0 1px 0 0 var(--accent-line);
+}
+
+/* ---- header ---- */
+.vw-head {
+  gap: 8px;
+}
+.vw-head__name {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.vw-head__meta {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  margin-left: auto;
+  padding-right: 6px;
+}
+.vw-head__actions {
+  gap: 2px;
+  flex: none;
+}
+.vw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: var(--ctl-xs);
+  padding: 0 6px 0 8px;
+  border-radius: var(--radius-xs);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+.vw-chip:hover,
+.vw-chip.is-open {
+  background: var(--hover);
+  color: var(--text);
+}
+.vw-chip svg {
+  color: var(--text-3);
+}
+.vw-select {
+  height: var(--ctl-xs);
+  max-width: 180px;
+  padding: 0 6px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-input);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  outline: none;
+}
+.vw-select:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+/* ---- stage (the well the picture sits in) ---- */
+.vw-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--well);
+  touch-action: none;
+}
+.vw-stage.is-drop::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border: 1px dashed var(--accent-line);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+}
+.vw-frame {
+  position: absolute;
+  background: #000;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.035);
+}
+.vw-frame--checker {
+  background-color: #2a2a2e;
+  background-image: conic-gradient(#3a3a3f 25%, transparent 0 50%, #3a3a3f 0 75%, transparent 0);
+  background-size: 16px 16px;
+}
+.vw-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.vw-canvas.is-pixelated {
+  image-rendering: pixelated;
+}
+
+/* ---- guides ---- */
+.vw-guides,
+.vw-gz {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.vw-guides line,
+.vw-guides rect,
+.vw-guides polygon,
+.vw-guides circle,
+.vw-gz line,
+.vw-gz rect,
+.vw-gz polygon,
+.vw-gz circle,
+.vw-gz polyline {
+  vector-effect: non-scaling-stroke;
+}
+.vw-guides__safe rect {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.42);
+  stroke-width: 1;
+}
+.vw-guides__safe rect + rect {
+  stroke-dasharray: 4 3;
+}
+.vw-guides__grid {
+  stroke: rgba(255, 255, 255, 0.3);
+  stroke-width: 1;
+}
+.vw-guides__cross line {
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1;
+}
+.vw-guides__divider {
+  stroke: rgba(255, 255, 255, 0.85);
+  stroke-width: 1;
+}
+.vw-guides__label {
+  fill: rgba(255, 255, 255, 0.75);
+  font-family: var(--font);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 3px;
+}
+.vw-guides__hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: ew-resize;
+}
+.vw-guides__knob {
+  fill: #fff;
+  stroke: rgba(0, 0, 0, 0.4);
+  stroke-width: 1;
+  pointer-events: all;
+  cursor: ew-resize;
+}
+
+/* ---- direct manipulation ---- */
+.vw-gz__box {
+  fill: transparent;
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+.vw-gz__box.is-live {
+  pointer-events: all;
+  cursor: move;
+}
+.vw-gz__handle {
+  fill: #fff;
+  stroke: var(--accent);
+  stroke-width: 1.25;
+  pointer-events: all;
+}
+.vw-gz__handle:hover {
+  fill: var(--accent);
+  stroke: #fff;
+}
+.vw-gz__handle--feather {
+  fill: var(--accent);
+  stroke: #fff;
+}
+.vw-gz__stem {
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+.vw-gz__anchor {
+  pointer-events: all;
+  cursor: crosshair;
+}
+.vw-gz__anchor line {
+  stroke: #fff;
+  stroke-width: 1;
+}
+.vw-gz__anchor-ring {
+  fill: rgba(0, 0, 0, 0.25);
+  stroke: #fff;
+  stroke-width: 1.25;
+}
+.vw-gz__guide {
+  stroke: #ff4fd8;
+  stroke-width: 1;
+  stroke-dasharray: 5 4;
+}
+.vw-gz__full {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-dasharray: 4 4;
+}
+.vw-gz__cropbox {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+.vw-gz__maskline {
+  fill: transparent;
+  stroke: rgba(255, 214, 102, 0.8);
+  stroke-width: 1;
+  stroke-dasharray: 5 3;
+  pointer-events: stroke;
+  stroke-linejoin: round;
+  cursor: pointer;
+}
+.vw-gz__maskline.is-active {
+  stroke-dasharray: none;
+  stroke: #ffd666;
+  pointer-events: all;
+  cursor: move;
+}
+.vw-gz__feather {
+  fill: none;
+  stroke: rgba(255, 214, 102, 0.55);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+.vw-gz__mask .vw-gz__handle {
+  stroke: #d4a72c;
+}
+.vw-gz__mask .vw-gz__stem {
+  stroke: #ffd666;
+}
+
+/* ---- inline title editor ---- */
+.vw-text-edit {
+  position: absolute;
+  transform-origin: center;
+  pointer-events: auto;
+}
+.vw-text-edit__field {
+  min-width: 0.6em;
+  min-height: 1em;
+  padding: 0 0.06em;
+  outline: 1px dashed color-mix(in srgb, var(--accent) 85%, white);
+  outline-offset: 4px;
+  caret-color: var(--accent);
+  cursor: text;
+  user-select: text;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.vw-text-edit__field:empty::before {
+  content: attr(data-placeholder);
+  opacity: 0.4;
+}
+.vw-text-done {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  height: var(--ctl-xs);
+  padding: 0 10px;
+  border-radius: var(--radius-xs);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+/* ---- empty / error ---- */
+.vw-empty,
+.vw-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px;
+  text-align: center;
+  pointer-events: none;
+  color: var(--text-3);
+}
+.vw-empty__title,
+.vw-error__title {
+  color: var(--text-2);
+  font-size: var(--fs-md);
+  font-weight: 500;
+}
+.vw-empty__sub,
+.vw-error__sub {
+  font-size: var(--fs-sm);
+  max-width: 340px;
+}
+.vw-error {
+  background: color-mix(in srgb, var(--well) 88%, transparent);
+  color: var(--danger);
+}
+.vw-error .vw-error__sub {
+  color: var(--text-2);
+}
+.vw-error--soft {
+  inset: auto 12px 12px 12px;
+  flex-direction: row;
+  justify-content: flex-start;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+}
+
+/* ---- transport ---- */
+.vw-transport {
+  flex: none;
+  border-top: 1px solid var(--border);
+  padding: 0 8px 6px;
+}
+.vw-transport.is-disabled {
+  opacity: 0.55;
+}
+.vw-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+}
+.vw-row__left,
+.vw-row__right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.vw-row__right {
+  justify-content: flex-end;
+}
+.vw-btns {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+.vw-btns .icon-btn--sm {
+  --ib: 26px;
+  padding: 0 4px;
+}
+.vw-btns .icon-btn.is-mark {
+  color: var(--accent);
+}
+.vw-play.icon-btn--primary {
+  --ib: 30px;
+  margin: 0 4px;
+}
+.vw-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 5px;
+  background: var(--border-strong);
+}
+.vw-tc {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--text);
+  height: 28px;
+  padding: 0 6px;
+  margin-left: -6px;
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+  text-align: left;
+}
+button.vw-tc:hover {
+  background: var(--hover);
+}
+.vw-tc--input {
+  width: 13ch;
+  border: 1px solid var(--border-input);
+  background: var(--surface-2);
+  outline: none;
+  box-shadow: var(--focus-ring);
+  margin-left: -6px;
+}
+.vw-fps {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vw-dropped {
+  height: 18px;
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vw-readouts {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  overflow: hidden;
+}
+.vw-readout {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.vw-readout__k {
+  color: var(--text-3);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.vw-meter {
+  width: 64px;
+  height: 7px;
+  flex: none;
+  border-radius: 1px;
+}
+
+/* ---- mini scrub bar ---- */
+.vw-scrub {
+  position: relative;
+  height: 12px;
+  margin: 0 2px;
+  cursor: pointer;
+  touch-action: none;
+}
+.vw-scrub.is-empty {
+  cursor: default;
+}
+.vw-scrub__track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 5px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--surface-4);
+}
+.vw-scrub__range {
+  position: absolute;
+  top: 4px;
+  height: 4px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.vw-scrub__mark {
+  position: absolute;
+  top: 2px;
+  width: 1px;
+  height: 8px;
+  background: var(--accent);
+}
+.vw-scrub__head {
+  position: absolute;
+  top: 1px;
+  width: 2px;
+  height: 10px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--text);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+.vw-scrub:hover .vw-scrub__track {
+  background: var(--surface-5);
+}
+
+/* ---- source monitor ---- */
+.vw-source__stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.vw-source__frame {
+  position: relative;
+  background: #000;
+  cursor: grab;
+}
+.vw-source__frame:active {
+  cursor: grabbing;
+}
+.vw-source__holder,
+.vw-source__exact,
+.vw-source__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.vw-source__holder--hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.vw-source__holder video,
+.vw-source-video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
+}
+.vw-source__exact,
+.vw-source__img {
+  object-fit: contain;
+  pointer-events: none;
+}
+.vw-wave {
+  position: absolute;
+  inset: 14px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  cursor: text;
+  overflow: hidden;
+  touch-action: none;
+}
+.vw-wave__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.vw-wave__loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+.vw-wave__range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--accent-soft);
+  box-shadow:
+    inset 1px 0 0 var(--accent),
+    inset -1px 0 0 var(--accent);
+  pointer-events: none;
+}
+.vw-wave__head {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--text);
+  pointer-events: none;
+}
+.vw-wave__grip {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-3);
+  color: var(--text-2);
+  cursor: grab;
+}
+
+/* ---- full screen ---- */
+.vw-program--full {
+  position: fixed !important;
+  inset: 0;
+  z-index: calc(var(--z-toast) - 1);
+  border-radius: 0;
+  background: #000;
+}
+.vw-program--full .vw-head {
+  display: none;
+}
+.vw-program--full .vw-stage {
+  background: #000;
+}
+.vw-program--full .vw-transport {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  width: min(880px, calc(100% - 32px));
+  transform: translateX(-50%);
+  border: 0;
+  border-radius: var(--radius);
+  padding: 2px 10px 4px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-2);
+  opacity: 0;
+  transition: opacity var(--dur-3) var(--ease);
+}
+.vw-program--full:hover .vw-transport,
+.vw-program--full .vw-transport:focus-within {
+  opacity: 1;
+}
+
+/* ---- narrow panels ---- */
+@container (max-width: 720px) {
+  .vw-readout:nth-child(3) {
+    display: none;
+  }
+}
+@container (max-width: 600px) {
+  .vw-readouts {
+    display: none;
+  }
+  .vw-head__meta {
+    display: none;
+  }
+}
+@container (max-width: 470px) {
+  .vw-btns .vw-opt,
+  .vw-btns .vw-sep {
+    display: none;
+  }
+  .vw-meter,
+  .vw-fps {
+    display: none;
+  }
+  .vw-tc {
+    font-size: 14px;
+  }
+}

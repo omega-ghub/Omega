@@ -6,7 +6,7 @@
 // Escape closes only the top-most modal; clicking the backdrop closes it;
 // focus moves into the dialog on open and returns to where it was on close.
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { I } from './Icons';
 
 const stack: number[] = [];
@@ -20,6 +20,7 @@ export function Modal({
   testId,
   label,
   dismissible = true,
+  style,
 }: {
   children: ReactNode;
   onClose: () => void;
@@ -30,6 +31,8 @@ export function Modal({
   label?: string;
   /** false = backdrop clicks and Escape do nothing (e.g. while busy). */
   dismissible?: boolean;
+  /** Extra styles, e.g. per-app accent variables (--accent, --accent-soft…). */
+  style?: CSSProperties;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
@@ -67,7 +70,7 @@ export function Modal({
       <div
         ref={ref}
         className={`modal ${className}`}
-        style={{ width }}
+        style={{ width, ...style }}
         role="dialog"
         aria-modal="true"
         aria-label={label}
@@ -99,6 +102,7 @@ export function Dialog({
   flush = false,
   testId,
   dismissible,
+  style,
   children,
 }: {
   title: ReactNode;
@@ -115,10 +119,11 @@ export function Dialog({
   flush?: boolean;
   testId?: string;
   dismissible?: boolean;
+  style?: CSSProperties;
   children: ReactNode;
 }) {
   return (
-    <Modal onClose={onClose} width={width} className={`dialog ${className}`} testId={testId} label={typeof title === 'string' ? title : undefined} dismissible={dismissible}>
+    <Modal onClose={onClose} width={width} className={`dialog ${className}`} testId={testId} label={typeof title === 'string' ? title : undefined} dismissible={dismissible} style={style}>
       <div className="dialog__head">
         {icon && <div className="dialog__icon">{icon}</div>}
         <div className="dialog__titles">

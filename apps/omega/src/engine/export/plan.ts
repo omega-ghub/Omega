@@ -208,7 +208,9 @@ export function resolveRange(spec: RangeSpec, seq: Pick<Sequence, 'fps' | 'inPoi
       end = spec.end;
       break;
     case 'frame': {
-      const t = Math.min(snap(spec.time), Math.max(0, snap(duration) - 1 / exactRate(seq.fps)));
+      // the frame on screen at spec.time (floor), never past the last frame
+      const rate = exactRate(seq.fps);
+      const t = Math.min(Math.floor(Math.max(0, spec.time) * rate + 1e-6) / rate, Math.max(0, snap(duration) - 1 / rate));
       return { start: t, end: t + 1 / exactRate(outFps ?? seq.fps) };
     }
   }

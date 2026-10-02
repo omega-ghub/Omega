@@ -19,6 +19,15 @@
 
 import { TP_LATENCY, TruePeakChannel } from './truePeak';
 
+/** Settings of the master-bus limiter (realtime and offline). */
+export const LIMITER_LOOKAHEAD_MS = 3;
+export const LIMITER_RELEASE_MS = 80;
+
+/** Delay (frames) the master limiter adds at a sample rate. */
+export function limiterLatencyFrames(sampleRate: number, lookaheadMs = LIMITER_LOOKAHEAD_MS): number {
+  return Math.max(1, Math.round((lookaheadMs / 1000) * sampleRate)) + TP_LATENCY;
+}
+
 export interface LimiterOptions {
   lookaheadMs?: number;
   releaseMs?: number;

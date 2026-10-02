@@ -15,10 +15,13 @@ import {
   Mp4OutputFormat,
   Output,
   Quality,
+  StreamTarget,
   WebMOutputFormat,
   getFirstEncodableAudioCodec,
   getFirstEncodableVideoCodec,
   type AudioCodec,
+  type StreamTargetChunk,
+  type Target,
   type VideoCodec,
 } from 'mediabunny';
 import { useEditor } from '../../state/store';
@@ -251,10 +254,13 @@ async function runJob(job: Running): Promise<string> {
     : null;
   patchProxyJob(job.assetId, { codec: videoCodec });
 
+  const dir = state.handle.dir;
+  const path = joinPath(dir, 'Proxies', proxyFileName(project(), asset, mp4 ? 'mp4' : 'webm'));
+  const sink = await openSink(path);
   const input = openInput(asset.path, 32);
+  let ok = false;
   try {
-    const target = new BufferTarget();
-    const output = new Output({ format: mp4 ? new Mp4OutputFormat({ fastStart: 'in-memory' }) : new WebMOutputFormat(), target });
+    const output = new Output({ format: mp4 ? new Mp4OutputFormat({ fastStart: sink.streaming ? false : 'in-memory' }) : new WebMOutputFormat(), target: sink.target });
     const conversion = await Conversion.init({
       input,
       output,
@@ -301,15 +307,74 @@ async function runJob(job: Running): Promise<string> {
       if (conversion.state === 'done') break;
       if (conversion.state === 'canceled' || job.canceled) throw new ConversionCanceledError();
     }
-    const buffer = target.buffer;
-    if (!buffer || buffer.byteLength < 64) throw new Error('The encoder produced no data');
-    const dir = useEditor.getState().handle?.dir ?? state.handle.dir;
-    const path = joinPath(dir, 'Proxies', proxyFileName(project(), asset, mp4 ? 'mp4' : 'webm'));
-    await window.omega.files.writeBinary(path, buffer);
+    const bytes = await sink.finish();
+    if (bytes < 64) throw new Error('The encoder produced no data');
+    ok = true;
     return path;
   } finally {
     input.dispose();
+    if (!ok) await sink.abort();
   }
+}
+
+/** Optional streaming-write API of newer hosts (positioned writes into `<path>.partial`). */
+interface StreamingFiles {
+  openWrite(path: string): Promise<number>;
+  writeAt(handle: number, data: ArrayBuffer, position: number): Promise<void>;
+  closeWrite(handle: number, opts?: { discard?: boolean }): Promise<number>;
+}
+
+interface ProxySink {
+  target: Target;
+  streaming: boolean;
+  /** Completes the file; resolves with its size in bytes. */
+  finish(): Promise<number>;
+  abort(): Promise<void>;
+}
+
+/**
+ * Where the proxy is written. Streams to disk when the host supports
+ * positioned writes (memory stays flat for long sources); otherwise encodes
+ * into memory and writes the file once with writeBinary.
+ */
+async function openSink(path: string): Promise<ProxySink> {
+  const files = window.omega.files as Partial<StreamingFiles> & typeof window.omega.files;
+  if (typeof files.openWrite === 'function' && typeof files.writeAt === 'function' && typeof files.closeWrite === 'function') {
+    const handle = await files.openWrite(path);
+    let closed = false;
+    const writable = new WritableStream<StreamTargetChunk>({
+      write: (chunk) => {
+        const data = chunk.data;
+        const buf = data.byteOffset === 0 && data.byteLength === data.buffer.byteLength ? data.buffer : data.slice().buffer;
+        return files.writeAt!(handle, buf, chunk.position);
+      },
+    });
+    return {
+      target: new StreamTarget(writable, { chunked: true, chunkSize: 4 * 1024 * 1024 }),
+      streaming: true,
+      async finish() {
+        closed = true;
+        return files.closeWrite!(handle);
+      },
+      async abort() {
+        if (closed) return;
+        closed = true;
+        await files.closeWrite!(handle, { discard: true }).catch(() => undefined);
+      },
+    };
+  }
+  const target = new BufferTarget();
+  return {
+    target,
+    streaming: false,
+    async finish() {
+      const buffer = target.buffer;
+      if (!buffer) return 0;
+      await window.omega.files.writeBinary(path, buffer);
+      return buffer.byteLength;
+    },
+    async abort() {},
+  };
 }
 
 function proxyFileName(p: Project | null, asset: MediaAsset, ext: string): string {

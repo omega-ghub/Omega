@@ -1845,47 +1845,70 @@ body.is-resizing-h * {
 }
 
 .dash {
-  display: grid;
-  grid-template-columns: 232px 1fr;
+  --rail: 60px;
+  --side-open: 220px;
+  display: flex;
   width: 100%;
   height: 100%;
 }
 .dash__side {
+  position: relative;
+  flex: none;
+  width: var(--rail);
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 14px 10px 12px;
+  gap: 2px;
+  padding: 12px 10px 10px;
   border-right: 1px solid var(--border);
   background: var(--bg);
   min-height: 0;
+  overflow: hidden;
+  transition: width var(--dur-3) var(--ease);
+}
+.dash.is-expanded .dash__side {
+  width: var(--side-open);
+}
+/* labels fade in only when the rail is expanded */
+.dash__fade {
+  opacity: 0;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity var(--dur-2) var(--ease);
+}
+.dash.is-expanded .dash__fade {
+  opacity: 1;
+  pointer-events: auto;
+  transition-delay: 60ms;
 }
 .dash__brand {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 6px 8px 18px;
+  gap: 12px;
+  height: 40px;
+  padding: 0 7px;
+  margin-bottom: 10px;
+  flex: none;
 }
 .dash__nav {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 .dash__nav-item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 32px;
+  gap: 12px;
+  height: 36px;
+  width: 100%;
   padding: 0 10px;
-  border-radius: var(--radius-sm);
-  color: var(--text-2);
+  border-radius: 8px;
+  color: var(--text-3);
   font-size: var(--fs-md);
   font-weight: 500;
   text-align: left;
+  flex: none;
   transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
-}
-.dash__nav-item svg {
-  color: var(--text-3);
-  transition: color var(--dur-1) var(--ease);
 }
 .dash__nav-item:hover {
   background: var(--hover);
@@ -1895,70 +1918,82 @@ body.is-resizing-h * {
   background: var(--active);
   color: var(--text);
 }
-.dash__nav-item.is-active svg {
-  color: var(--brand);
+.dash__nav-item.is-active::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--brand);
 }
 .dash__nav-label {
-  padding: 18px 10px 6px;
-  color: var(--text-3);
-  font-size: var(--fs-2xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  color: inherit;
 }
-.dash__apps {
+.dash__foot {
+  margin-top: auto;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 6px;
 }
-.dash__app {
+.dash__plan {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 40px;
-  padding: 0 8px;
-  border-radius: var(--radius-sm);
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 7px;
+  border-radius: 8px;
   text-align: left;
-  transition: background var(--dur-1) var(--ease);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px transparent;
+  transition: background var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease);
 }
-.dash__app:hover {
-  background: var(--hover);
-}
-.dash__app.is-dim {
-  opacity: 0.5;
-}
-.dash__app-state {
-  margin-left: auto;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ok);
-  box-shadow: 0 0 0 3px var(--ok-soft);
-}
-.dash__plan {
-  margin-top: auto;
-  padding: 14px;
-  border-radius: var(--radius);
+.dash.is-expanded .dash__plan {
   background: var(--surface);
   box-shadow: inset 0 0 0 1px var(--border);
 }
-.dash__plan-label {
-  color: var(--text-3);
-  font-size: var(--fs-2xs);
-  font-weight: 600;
+.dash__plan:hover {
+  background: var(--hover);
+}
+.dash__plan-badge {
+  flex: none;
+  width: 26px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--text-2);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+}
+.dash__plan-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 .dash__plan-name {
+  color: var(--text);
+  font-size: var(--fs-sm);
   font-weight: 600;
-  font-size: var(--fs-lg);
-  margin: 4px 0 2px;
 }
 .dash__plan-hint {
   color: var(--text-3);
-  font-size: var(--fs-sm);
-  line-height: 1.45;
-  margin-bottom: 12px;
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dash__toggle {
+  color: var(--text-4);
+}
+.dash__toggle svg {
+  transition: transform var(--dur-3) var(--ease);
 }
 .dash__main {
   overflow: auto;
@@ -2189,6 +2224,21 @@ body.is-resizing-h * {
   background: var(--well);
   border-bottom: 1px solid var(--border);
 }
+.recent-card__thumb::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(200px 90px at 0% 100%, var(--card-soft, transparent), transparent 75%);
+  opacity: 0.8;
+}
+.recent-card__app {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .recent-card__thumb::after {
   content: attr(data-format);
   position: absolute;
@@ -2200,9 +2250,9 @@ body.is-resizing-h * {
 }
 .recent-card__body {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px 4px;
+  flex-direction: column;
+  gap: 1px;
+  padding: 12px 14px 2px;
   min-width: 0;
 }
 .recent-card__name {
@@ -2224,8 +2274,37 @@ body.is-resizing-h * {
   gap: 6px;
   padding: 8px 10px 10px 14px;
 }
-.recent-card__actions .btn--ghost {
+.recent-card__actions .icon-btn {
   margin-left: auto;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease);
+}
+.recent-card:hover .recent-card__actions .icon-btn {
+  opacity: 1;
+}
+
+.learn-app {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.learn-app__hint {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+.keys__or {
+  margin: 0 6px;
+  color: var(--text-4);
+  font-size: var(--fs-xs);
 }
 
 .app-list {
@@ -2438,6 +2517,14 @@ body.is-resizing-h * {
   gap: 14px;
   padding: 18px 16px 16px 22px;
   border-bottom: 1px solid var(--border);
+}
+.newproj__eyebrow {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 2px;
 }
 .newproj__title {
   font-size: 16px;

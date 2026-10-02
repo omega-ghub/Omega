@@ -1,48 +1,104 @@
-import { useMemo, type ReactElement } from 'react';
+// The Omega hub dashboard. OWNED BY THE SHELL PACKAGE.
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { AppMark, AppTitle, OmegaMark } from '../brand/Logos';
 import { THEMES, WORKSPACE_ORDER, type AppKind } from '../brand/themes';
 import { useHub, type DashboardTab } from '../state/hubStore';
 import { I } from '../ui/Icons';
+import { Keys } from '../ui/controls';
 import { formatBytes, timeAgo } from '../ui/format';
 import { SHORTCUTS } from '../workspaces/video/shortcuts';
 
 const NAV: { id: DashboardTab; label: string; icon: (p: { size?: number }) => ReactElement }[] = [
-  { id: 'home', label: 'Home', icon: I.Home },
-  { id: 'apps', label: 'Apps', icon: I.Grid },
-  { id: 'projects', label: 'Projects', icon: I.Folder },
-  { id: 'learn', label: 'Learn', icon: I.Book },
-  { id: 'plans', label: 'Plans', icon: I.Tag },
-  { id: 'settings', label: 'Settings', icon: I.Settings },
+  { id: 'home', label: 'Home', icon: I.NavHome },
+  { id: 'apps', label: 'Apps', icon: I.NavApps },
+  { id: 'projects', label: 'Projects', icon: I.NavProjects },
+  { id: 'learn', label: 'Learn', icon: I.NavLearn },
+  { id: 'plans', label: 'Plans', icon: I.NavPlans },
+  { id: 'settings', label: 'Settings', icon: I.NavSettings },
 ];
+
+const SIDEBAR_KEY = 'omega.sidebar.expanded';
+
+function useSidebar(): [boolean, () => void] {
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_KEY, expanded ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [expanded]);
+  return [expanded, () => setExpanded((v) => !v)];
+}
+
+const accentVars = (app: AppKind) => {
+  const t = THEMES[app];
+  return { ['--accent' as string]: t.accent, ['--accent-deep' as string]: t.accentDeep, ['--accent-soft' as string]: t.accentSoft };
+};
 
 export function Dashboard() {
   const tab = useHub((s) => s.dashboardTab);
   const setTab = useHub((s) => s.setDashboardTab);
+  const [expanded, toggle] = useSidebar();
 
   return (
-    <div className="dash">
-      <aside className="dash__side">
-        <div className="dash__brand">
-          <OmegaMark size={34} />
-          <div>
-            <div className="dash__brand-name">Omega</div>
-            <div className="dash__brand-sub">Creative Suite</div>
-          </div>
+    <div className={`dash ${expanded ? 'is-expanded' : ''}`}>
+      <aside className="dash__side" data-testid="hub-sidebar" aria-label="Omega">
+        <div className="dash__brand" data-tip={expanded ? undefined : 'Omega · Creative Suite'} data-tip-side="right">
+          <OmegaMark size={24} />
+          <span className="dash__fade">
+            <AppTitle app="omega" size="sm" />
+          </span>
         </div>
         <nav className="dash__nav">
           {NAV.map((n) => (
-            <button key={n.id} className={`dash__nav-item ${tab === n.id ? 'is-active' : ''}`} onClick={() => setTab(n.id)}>
+            <button
+              key={n.id}
+              className={`dash__nav-item ${tab === n.id ? 'is-active' : ''}`}
+              onClick={() => setTab(n.id)}
+              aria-label={n.label}
+              aria-current={tab === n.id ? 'page' : undefined}
+              data-tip={expanded ? undefined : n.label}
+              data-tip-side="right"
+              data-testid={`hub-nav-${n.id}`}
+            >
               <n.icon size={18} />
-              <span>{n.label}</span>
+              <span className="dash__fade dash__nav-label">{n.label}</span>
             </button>
           ))}
         </nav>
-        <div className="dash__plan">
-          <div className="dash__plan-label">Your plan</div>
-          <div className="dash__plan-name">Free</div>
-          <div className="dash__plan-hint">Every workspace. No watermark up to 1080p.</div>
-          <button className="btn btn--accent btn--block" onClick={() => setTab('plans')}>
-            See plans
+        <div className="dash__foot">
+          <button
+            className={`dash__plan ${expanded ? '' : 'is-compact'}`}
+            onClick={() => setTab('plans')}
+            data-tip={expanded ? undefined : 'Free plan · See plans'}
+            data-tip-side="right"
+            aria-label="Free plan. See plans"
+            data-testid="hub-plan"
+          >
+            <span className="dash__plan-badge">Free</span>
+            <span className="dash__fade dash__plan-text">
+              <span className="dash__plan-name">Free plan</span>
+              <span className="dash__plan-hint">Every app, no watermark up to 1080p</span>
+            </span>
+          </button>
+          <button
+            className="dash__nav-item dash__toggle"
+            onClick={toggle}
+            aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
+            aria-expanded={expanded}
+            data-tip={expanded ? undefined : 'Expand sidebar'}
+            data-tip-side="right"
+            data-testid="hub-sidebar-toggle"
+          >
+            <I.SidebarToggle size={18} style={{ transform: expanded ? 'scaleX(-1)' : undefined }} />
+            <span className="dash__fade dash__nav-label">Collapse</span>
           </button>
         </div>
       </aside>
@@ -60,7 +116,7 @@ export function Dashboard() {
 
 function greeting() {
   const h = new Date().getHours();
-  if (h < 5) return 'Still at it';
+  if (h < 5) return 'Working late';
   if (h < 12) return 'Good morning';
   if (h < 18) return 'Good afternoon';
   return 'Good evening';
@@ -68,8 +124,10 @@ function greeting() {
 
 function HomeTab() {
   const recents = useHub((s) => s.recents);
-  const openNew = useHub((s) => s.startApp);
+  const startApp = useHub((s) => s.startApp);
   const openProject = useHub((s) => s.launchProject);
+  const deltaInstalled = useHub((s) => !!s.installed.video);
+  const delta = THEMES.video;
 
   return (
     <div className="page">
@@ -77,9 +135,17 @@ function HomeTab() {
         <div className="hero__text">
           <div className="hero__eyebrow">{greeting()}</div>
           <h1 className="hero__title">What are you making today?</h1>
-          <p className="hero__sub">Pick a workspace to start a project. Everything you make lives in one open file format and stays on your machine.</p>
+          <p className="hero__sub">Start a project in any app. Everything you make lives in one open project format, on your machine.</p>
+          <div className="hero__actions">
+            <button className="btn btn--primary btn--tinted" style={accentVars('video')} onClick={() => startApp('video')} data-testid="hub-hero-new">
+              <I.Plus size={15} /> {deltaInstalled ? `New ${delta.name} project` : `Get ${delta.name}`}
+            </button>
+            <button className="btn" onClick={() => openProject()} data-testid="hub-hero-open">
+              <I.Open size={15} /> Open project…
+            </button>
+          </div>
         </div>
-        <OmegaMark size={128} className="hero__mark" />
+        <OmegaMark size={88} className="hero__mark" />
       </section>
 
       <section className="section">
@@ -88,7 +154,7 @@ function HomeTab() {
         </div>
         <div className="create-row">
           {WORKSPACE_ORDER.map((app) => (
-            <CreateCard key={app} app={app} onClick={() => openNew(app)} />
+            <CreateCard key={app} app={app} onClick={() => startApp(app)} />
           ))}
         </div>
       </section>
@@ -96,12 +162,17 @@ function HomeTab() {
       <section className="section">
         <div className="section__head">
           <h2>Recent projects</h2>
-          <button className="btn btn--ghost" onClick={() => openProject()}>
-            <I.Open size={16} /> Open project…
-          </button>
+          {recents.length > 0 && (
+            <button className="btn btn--ghost btn--sm" onClick={() => useHub.getState().setDashboardTab('projects')}>
+              View all <I.ChevronRight size={14} />
+            </button>
+          )}
         </div>
         {recents.length === 0 ? (
           <div className="empty">
+            <div className="empty-state__icon">
+              <I.NavProjects size={18} />
+            </div>
             <div className="empty__title">No projects yet</div>
             <div className="empty__sub">Create one above, or open an existing .omega file.</div>
           </div>
@@ -122,17 +193,28 @@ function CreateCard({ app, onClick }: { app: AppKind; onClick: () => void }) {
   const installed = useHub((s) => !!s.installed[app]);
   const entry = useHub((s) => s.catalog.find((m) => m.id === app));
   const progress = useHub((s) => s.progress[app]);
-  let hint = t.phase;
+  let hint: string = t.phase;
   if (t.available) {
     if (progress !== undefined) hint = `Installing… ${Math.round(progress * 100)}%`;
-    else if (installed) hint = 'Start a project';
+    else if (installed) hint = 'New project';
     else hint = entry ? `Get it · ${formatBytes(entry.size)}` : 'Not available offline';
   }
   return (
-    <button className="create-card" onClick={onClick} disabled={progress !== undefined} style={{ ['--card-accent' as string]: t.accent, ['--card-soft' as string]: t.accentSoft }}>
-      <AppMark app={app} size={44} />
+    <button
+      className={`create-card ${t.available ? '' : 'is-planned'}`}
+      onClick={onClick}
+      disabled={progress !== undefined}
+      data-testid={`hub-create-${app}`}
+      style={{ ['--card-accent' as string]: t.accent, ['--card-soft' as string]: t.accentSoft }}
+    >
+      <AppMark app={app} size={40} />
       <AppTitle app={app} className="create-card__title" />
-      <div className="create-card__hint">{hint}</div>
+      <div className="create-card__hint">
+        {t.available && installed && progress === undefined && <I.Plus size={13} />}
+        {t.available && !installed && progress === undefined && entry && <I.Download size={13} />}
+        {hint}
+      </div>
+      {t.available && <I.ArrowRight size={15} className="create-card__go" />}
     </button>
   );
 }
@@ -143,23 +225,24 @@ function RecentCard({ r }: { r: { path: string; name: string; app: string; modif
   const app = (r.app in THEMES ? r.app : 'video') as AppKind;
   const t = THEMES[app];
   return (
-    <div className="recent-card" onDoubleClick={() => openProject(r.path)}>
-      <div className="recent-card__thumb" style={{ background: `linear-gradient(135deg, ${t.accentSoft}, transparent 70%)` }}>
-        <AppMark app={app} size={36} />
+    <div className="recent-card" onDoubleClick={() => openProject(r.path)} data-testid="hub-recent">
+      <div className="recent-card__thumb" data-format={r.summary} style={{ ['--card-soft' as string]: t.accentSoft }}>
+        <div className="recent-card__app">
+          <AppMark app={app} size={22} />
+          <AppTitle app={app} size="sm" />
+        </div>
       </div>
       <div className="recent-card__body">
         <div className="recent-card__name" title={r.path}>
           {r.name}
         </div>
-        <div className="recent-card__meta">
-          {t.name} ({t.category}) · {r.summary} · {timeAgo(r.modifiedAt)}
-        </div>
+        <div className="recent-card__meta">Edited {timeAgo(r.modifiedAt)}</div>
       </div>
       <div className="recent-card__actions">
-        <button className="btn btn--small btn--accent" onClick={() => openProject(r.path)}>
+        <button className="btn btn--sm btn--primary btn--tinted" style={accentVars(app)} onClick={() => openProject(r.path)}>
           Open
         </button>
-        <button className="btn btn--small btn--ghost" onClick={() => removeRecent(r.path)} title="Remove from recents">
+        <button className="icon-btn icon-btn--sm" onClick={() => removeRecent(r.path)} data-tip="Remove from recents" aria-label="Remove from recents">
           <I.Close size={14} />
         </button>
       </div>
@@ -178,14 +261,17 @@ function AppsTab() {
   const refreshModules = useHub((s) => s.refreshModules);
   return (
     <div className="page">
-      <h1 className="page__title">Apps</h1>
-      <p className="page__sub">
-        Omega is a small hub. Each app is downloaded only when you want it, so you never carry the ones you don't use. Apps share one project format, so a project can use more than one.
-      </p>
+      <div className="page__head">
+        <div>
+          <h1 className="page__title">Apps</h1>
+          <p className="page__sub">Omega is a small hub. Each app downloads only when you want it and shares one project format with the others.</p>
+        </div>
+      </div>
       {catalogError && (
-        <div className="note">
-          {catalogError}{' '}
-          <button className="btn btn--small btn--ghost" onClick={() => refreshModules()}>
+        <div className="note note--warn">
+          <I.Warning size={15} />
+          <span style={{ flex: 1 }}>{catalogError}</span>
+          <button className="btn btn--xs" onClick={() => refreshModules()}>
             Retry
           </button>
         </div>
@@ -197,44 +283,49 @@ function AppsTab() {
           const inst = installed[app];
           const busy = progress[app] !== undefined;
           const update = !!(inst && entry && entry.version !== inst.version);
-          const accent = { ['--accent' as string]: t.accent, ['--accent-deep' as string]: t.accentDeep };
           return (
-            <div className="app-row" key={app}>
-              <AppMark app={app} size={56} />
+            <div className={`app-row ${t.available ? '' : 'is-planned'}`} key={app} data-testid={`hub-app-${app}`} style={accentVars(app)}>
+              <AppMark app={app} size={44} />
               <div className="app-row__text">
                 <div className="app-row__name">
                   <AppTitle app={app} size="lg" />
-                  {!t.available && <span className="pill">{t.phase}</span>}
-                  {inst && <span className="pill pill--accent" style={{ ['--pill' as string]: t.accent }}>Installed · v{inst.version}</span>}
+                  {!t.available && <span className="badge badge--outline">{t.phase}</span>}
+                  {inst && (
+                    <span className="badge badge--accent">
+                      <span className="badge__dot" />
+                      Installed · v{inst.version}
+                    </span>
+                  )}
                 </div>
                 <div className="app-row__tag">{t.tagline}</div>
                 {busy && (
                   <div className="progress app-row__progress">
                     <div className="progress__bar">
-                      <div className="progress__fill" style={{ width: `${Math.round(progress[app] * 100)}%`, background: t.accent }} />
+                      <div className="progress__fill" style={{ width: `${Math.round(progress[app] * 100)}%` }} />
                     </div>
+                    <span className="progress__text">{Math.round(progress[app] * 100)}%</span>
                   </div>
                 )}
               </div>
               <div className="app-row__actions">
                 {!t.available && <span className="muted">Coming later</span>}
                 {t.available && !inst && (
-                  <button className="btn btn--accent" style={accent} disabled={busy || !entry} onClick={() => installModule(app)}>
-                    <I.Import size={16} /> {busy ? `${Math.round(progress[app] * 100)}%` : entry ? `Install · ${formatBytes(entry.size)}` : 'Unavailable'}
+                  <button className="btn btn--primary btn--tinted" disabled={busy || !entry} onClick={() => installModule(app)}>
+                    <I.Download size={15} /> {busy ? 'Installing…' : entry ? `Install · ${formatBytes(entry.size)}` : 'Unavailable'}
                   </button>
                 )}
                 {t.available && inst && (
                   <>
                     {update && (
-                      <button className="btn btn--ghost" disabled={busy} onClick={() => installModule(app)}>
+                      <button className="btn" disabled={busy} onClick={() => installModule(app)}>
                         Update to v{entry!.version}
                       </button>
                     )}
-                    <button className="btn btn--accent" style={accent} onClick={() => startApp(app)}>
-                      New project
-                    </button>
-                    <button className="btn btn--ghost" onClick={() => uninstallModule(app)} title="Remove this app. Projects are not deleted.">
+                    <button className="btn btn--ghost" onClick={() => uninstallModule(app)} data-tip="Removes the app. Your projects are kept.">
                       Uninstall
+                    </button>
+                    <button className="btn btn--primary btn--tinted" onClick={() => startApp(app)}>
+                      New project
                     </button>
                   </>
                 )}
@@ -253,24 +344,30 @@ function ProjectsTab() {
   const removeRecent = useHub((s) => s.removeRecent);
   return (
     <div className="page">
-      <div className="section__head">
-        <h1 className="page__title">Projects</h1>
-        <button className="btn btn--accent" onClick={() => openProject()}>
-          <I.Open size={16} /> Open from disk
+      <div className="page__head">
+        <div>
+          <h1 className="page__title">Projects</h1>
+          <p className="page__sub">Projects live wherever you save them. Nothing is uploaded.</p>
+        </div>
+        <button className="btn" onClick={() => openProject()}>
+          <I.Open size={15} /> Open from disk…
         </button>
       </div>
       {recents.length === 0 ? (
         <div className="empty">
+          <div className="empty-state__icon">
+            <I.NavProjects size={18} />
+          </div>
           <div className="empty__title">Nothing here yet</div>
-          <div className="empty__sub">Projects you create or open will be listed here. They are stored wherever you choose, never in a cloud you didn't ask for.</div>
+          <div className="empty__sub">Projects you create or open are listed here.</div>
         </div>
       ) : (
         <table className="table">
           <thead>
             <tr>
               <th>Name</th>
-              <th>Workspace</th>
-              <th>Settings</th>
+              <th>App</th>
+              <th>Format</th>
               <th>Modified</th>
               <th>Location</th>
               <th />
@@ -281,20 +378,26 @@ function ProjectsTab() {
               const app = (r.app in THEMES ? r.app : 'video') as AppKind;
               return (
                 <tr key={r.path} onDoubleClick={() => openProject(r.path)}>
-                  <td className="table__name">
-                    <AppMark app={app} size={20} /> {r.name}
+                  <td>
+                    <div className="table__name">
+                      <AppMark app={app} size={22} /> {r.name}
+                    </div>
                   </td>
-                  <td>{THEMES[app].name} <span className="muted">· {THEMES[app].category}</span></td>
-                  <td>{r.summary}</td>
+                  <td>
+                    <AppTitle app={app} size="sm" />
+                  </td>
+                  <td className="mono" style={{ fontSize: 11.5 }}>
+                    {r.summary}
+                  </td>
                   <td>{timeAgo(r.modifiedAt)}</td>
                   <td className="table__path" title={r.path}>
                     {r.path}
                   </td>
                   <td className="table__actions">
-                    <button className="btn btn--small btn--accent" onClick={() => openProject(r.path)}>
+                    <button className="btn btn--sm btn--primary btn--tinted" style={accentVars(app)} onClick={() => openProject(r.path)}>
                       Open
                     </button>
-                    <button className="btn btn--small btn--ghost" onClick={() => removeRecent(r.path)}>
+                    <button className="btn btn--sm btn--ghost" onClick={() => removeRecent(r.path)}>
                       Remove
                     </button>
                   </td>
@@ -319,8 +422,22 @@ function LearnTab() {
   }, []);
   return (
     <div className="page">
-      <h1 className="page__title">Learn</h1>
-      <p className="page__sub">Delta ships with a Premiere-compatible keyboard layout, so muscle memory carries over. Here is the Delta reference.</p>
+      <div className="page__head">
+        <div>
+          <h1 className="page__title">Learn</h1>
+          <p className="page__sub">
+            {THEMES.video.name} ships with a Premiere Pro–compatible keyboard layout, so your muscle memory carries over. Final Cut Pro and DaVinci Resolve layouts are one
+            click away in its Keyboard Shortcuts window.
+          </p>
+        </div>
+      </div>
+      <div className="learn-app">
+        <AppMark app="video" size={32} />
+        <AppTitle app="video" />
+        <span className="learn-app__hint">
+          Open the full, editable list inside {THEMES.video.name} with <Keys binding="Mod+Alt+K" />
+        </span>
+      </div>
       <div className="shortcut-grid">
         {groups.map(([group, items]) => (
           <div className="card" key={group}>
@@ -328,11 +445,14 @@ function LearnTab() {
             <table className="keys">
               <tbody>
                 {items.map((s) => (
-                  <tr key={s.label}>
+                  <tr key={s.id}>
                     <td>{s.label}</td>
                     <td>
-                      {s.keys.map((k) => (
-                        <kbd key={k}>{k}</kbd>
+                      {s.keys.map((k, i) => (
+                        <span key={k}>
+                          {i > 0 && <span className="keys__or">or</span>}
+                          <Keys binding={k} />
+                        </span>
                       ))}
                     </td>
                   </tr>
@@ -356,66 +476,52 @@ const PROMISES = [
   'Windows, macOS and Linux.',
 ];
 
+const PLANS: { name: string; price: string; unit?: string; features: string[]; cta: string; featured?: boolean; current?: boolean }[] = [
+  { name: 'Free', price: '$0', features: ['Every app, no time limit', 'No watermark up to 1080p and stereo', 'Local AI tools'], cta: 'Current plan', current: true },
+  { name: 'Creator', price: '$9.99', unit: '/month', features: ['Everything unlocked, all resolutions', 'All export presets, HDR delivery', 'Priority support'], cta: 'Choose Creator', featured: true },
+  { name: 'Perpetual', price: '$149.99', unit: ' once', features: ['Own this version forever', 'One year of updates included', 'Works offline, no account needed'], cta: 'Buy once' },
+  { name: 'Studio', price: '$19.99', unit: '/seat/month', features: ['Shared libraries and review links', 'Team admin and SSO', 'Cloud render (optional)'], cta: 'Contact us' },
+];
+
 function PlansTab() {
+  const showToast = useHub((s) => s.showToast);
   return (
     <div className="page">
-      <h1 className="page__title">Plans</h1>
-      <p className="page__sub">Three prices, shown in full, no regional games. Switch or cancel any time from this screen.</p>
+      <div className="page__head">
+        <div>
+          <h1 className="page__title">Plans</h1>
+          <p className="page__sub">Four prices, shown in full, with no regional games. Switch or cancel any time from this screen.</p>
+        </div>
+      </div>
       <div className="plans">
-        <div className="plan">
-          <div className="plan__name">Free</div>
-          <div className="plan__price">
-            $0
+        {PLANS.map((p) => (
+          <div key={p.name} className={`plan ${p.featured ? 'plan--featured' : ''}`}>
+            {p.featured && <span className="badge plan__badge">Popular</span>}
+            <div className="plan__name">{p.name}</div>
+            <div className="plan__price">
+              {p.price}
+              {p.unit && <span>{p.unit}</span>}
+            </div>
+            <ul>
+              {p.features.map((f) => (
+                <li key={f}>
+                  <I.Check size={14} /> {f}
+                </li>
+              ))}
+            </ul>
+            <button
+              className={`btn btn--block ${p.featured ? 'btn--primary' : ''}`}
+              disabled={p.current}
+              onClick={() => showToast('Purchasing opens with the 1.0 release. Every app is free during the preview.')}
+            >
+              {p.cta}
+            </button>
           </div>
-          <ul>
-            <li>Every workspace, no time limit</li>
-            <li>No watermark up to 1080p / stereo</li>
-            <li>Local AI tools</li>
-          </ul>
-          <button className="btn btn--ghost btn--block" disabled>
-            Current plan
-          </button>
-        </div>
-        <div className="plan plan--featured">
-          <div className="plan__name">Creator</div>
-          <div className="plan__price">
-            $9.99<span>/month</span>
-          </div>
-          <ul>
-            <li>Everything unlocked, all resolutions</li>
-            <li>All export presets, HDR delivery</li>
-            <li>Priority support</li>
-          </ul>
-          <button className="btn btn--accent btn--block">Choose Creator</button>
-        </div>
-        <div className="plan">
-          <div className="plan__name">Perpetual</div>
-          <div className="plan__price">
-            $149.99<span> once</span>
-          </div>
-          <ul>
-            <li>Own this version forever</li>
-            <li>One year of updates included</li>
-            <li>Works offline, no account needed</li>
-          </ul>
-          <button className="btn btn--ghost btn--block">Buy once</button>
-        </div>
-        <div className="plan">
-          <div className="plan__name">Studio</div>
-          <div className="plan__price">
-            $19.99<span>/seat/month</span>
-          </div>
-          <ul>
-            <li>Shared libraries and review links</li>
-            <li>Team admin and SSO</li>
-            <li>Cloud render (optional)</li>
-          </ul>
-          <button className="btn btn--ghost btn--block">Contact us</button>
-        </div>
+        ))}
       </div>
       <div className="card promises">
         <div className="card__title">
-          <I.Shield size={18} /> Our promises
+          <I.Shield size={16} /> Our promises
         </div>
         <ul>
           {PROMISES.map((p) => (
@@ -433,40 +539,66 @@ function SettingsTab() {
   const appInfo = useHub((s) => s.appInfo);
   return (
     <div className="page">
-      <h1 className="page__title">Settings</h1>
+      <div className="page__head">
+        <div>
+          <h1 className="page__title">Settings</h1>
+          <p className="page__sub">Omega keeps everything on this computer.</p>
+        </div>
+      </div>
       <div className="settings-grid">
         <div className="card">
-          <div className="card__title">Keyboard</div>
-          <label className="field">
-            <span>Shortcut layout</span>
-            <select defaultValue="premiere">
-              <option value="premiere">Premiere-compatible (default)</option>
-              <option value="omega">Omega</option>
-            </select>
-          </label>
-          <p className="muted">Final Cut and Resolve layouts are planned.</p>
+          <div className="card__title">
+            <I.Shield size={16} /> Privacy
+          </div>
+          <ul className="facts">
+            <li>
+              <I.Check size={14} /> No telemetry and no crash reports are sent.
+            </li>
+            <li>
+              <I.Check size={14} /> No account or sign-in, ever required.
+            </li>
+            <li>
+              <I.Check size={14} /> Your media and projects never leave this machine.
+            </li>
+            <li>
+              <I.Check size={14} /> The app catalog is fetched only to list and download apps.
+            </li>
+          </ul>
         </div>
         <div className="card">
-          <div className="card__title">Privacy</div>
-          <label className="field field--row">
-            <input type="checkbox" defaultChecked={false} />
-            <span>Send anonymous crash reports (off by default)</span>
-          </label>
-          <label className="field field--row">
-            <input type="checkbox" defaultChecked={false} />
-            <span>Check for updates automatically</span>
-          </label>
-          <p className="muted">Omega never sends your media or project contents anywhere.</p>
+          <div className="card__title">
+            <I.Keyboard size={16} /> Keyboard
+          </div>
+          <p className="muted" style={{ lineHeight: 1.55 }}>
+            Each app keeps its own shortcuts. In {THEMES.video.name}, open Keyboard Shortcuts with <Keys binding="Mod+Alt+K" /> to rebind keys or switch between the Premiere
+            Pro, Final Cut Pro and DaVinci Resolve layouts.
+          </p>
         </div>
         <div className="card">
-          <div className="card__title">What's running</div>
-          <p>
-            <strong>Nothing in the background.</strong> When you close Omega, no helper, sync agent or updater keeps running.
+          <div className="card__title">
+            <I.Monitor size={16} /> This computer
+          </div>
+          <div className="row">
+            <span className="row__label">Omega</span>
+            <span className="row__value">{appInfo?.version}</span>
+          </div>
+          <div className="row">
+            <span className="row__label">Electron</span>
+            <span className="row__value">{appInfo?.electron}</span>
+          </div>
+          <div className="row">
+            <span className="row__label">Chromium</span>
+            <span className="row__value">{appInfo?.chrome}</span>
+          </div>
+          <div className="row">
+            <span className="row__label">Data folder</span>
+            <span className="row__value truncate" title={appInfo?.userData} style={{ maxWidth: 220 }}>
+              {appInfo?.userData}
+            </span>
+          </div>
+          <p className="muted" style={{ marginTop: 10, fontSize: 12 }}>
+            Nothing runs in the background: when you close Omega, no helper, sync agent or updater keeps running.
           </p>
-          <p className="muted">
-            Omega {appInfo?.version} · Electron {appInfo?.electron} · Chromium {appInfo?.chrome}
-          </p>
-          <p className="muted">Data folder: {appInfo?.userData}</p>
         </div>
       </div>
     </div>

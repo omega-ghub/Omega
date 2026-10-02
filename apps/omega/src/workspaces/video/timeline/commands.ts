@@ -5,8 +5,8 @@
 
 import * as ops from '../../../engine/edit/ops';
 import { transport } from '../../../engine/playback/transport';
-import { exactRate, snapToFrame, sourceSpan, sourceTimeAt } from '../../../engine/time';
-import { makeSequence, makeTrack } from '../../../state/defaults';
+import { exactRate, snapToFrame, sourceTimeAt } from '../../../engine/time';
+import { makeSequence } from '../../../state/defaults';
 import { useEditor } from '../../../state/store';
 import type { ClipboardData } from '../../../state/store';
 import type { Clip, LabelColor, Project, Sequence, Track, TrackKind, TransitionType } from '../../../state/types';
@@ -124,16 +124,13 @@ export function insertTargets(seq: Sequence): { video: Track | null; audio: Trac
   return { video, audio };
 }
 
-/** Closes all gaps on the tracks (magnetic timeline). */
+/** Closes the gaps shared by these tracks (magnetic timeline). */
 export function closeGapsOn(seq: Sequence, trackIds: Iterable<string>) {
-  const anyOps = ops as unknown as Record<string, unknown>;
-  const closeAll = anyOps.closeAllGaps;
-  for (const id of new Set(trackIds)) {
-    const tr = trackById(seq, id);
-    if (!tr || tr.locked || tr.kind === 'caption') continue;
-    if (typeof closeAll === 'function' && closeAll.length >= 2) (closeAll as (s: Sequence, trackId: string) => void)(seq, id);
-    else ops.closeGap(seq, id, null);
-  }
+  const ids = [...new Set(trackIds)].filter((id) => {
+    const t = trackById(seq, id);
+    return t && !t.locked && t.kind !== 'caption';
+  });
+  if (ids.length) ops.closeAllGaps(seq, ids);
 }
 
 export function tracksOfClips(seq: Sequence, ids: string[]): string[] {
@@ -143,6 +140,11 @@ export function tracksOfClips(seq: Sequence, ids: string[]): string[] {
 
 function seek(t: number) {
   transport.seek(Math.max(0, t));
+}
+
+/** Edit-op link option: with linked selection off, ops act on the given clips only. */
+export function linkOpts(): { unlinked: boolean } {
+  return { unlinked: !S().linkedSelection };
 }
 
 // ---------------------------------------------------------------------------
@@ -157,15 +159,16 @@ export function splitAtPlayhead(allTracks = false) {
   if (allTracks) {
     const ids = seq.tracks.filter((tr) => !tr.locked).flatMap((tr) => tr.clips.filter(inside).map((c) => c.id));
     if (!ids.length) return toast('Nothing to split at the playhead');
-    editSeq('Split all tracks', (s) => void ops.splitAt(s, ids, t));
+    editSeq('Add edit to all tracks', (s) => void ops.splitAllTracks(s, t));
     return;
   }
   const sel = editableIds(seq, selectedClips(seq).filter(inside).map((c) => c.id));
-  editSeq('Split', (s) => void ops.splitAt(s, sel.length ? sel : null, t));
+  const lo = linkOpts();
+  editSeq('Add edit', (s) => void ops.splitAt(s, sel.length ? sel : null, t, lo));
 }
 
-export function splitClipsAt(ids: string[] | null, t: number, label = 'Razor') {
-  editSeq(label, (s) => void ops.splitAt(s, ids, t));
+export function splitClipsAt(ids: string[] | null, t: number, label = 'Razor', unlinked = !S().linkedSelection) {
+  editSeq(label, (s) => void ops.splitAt(s, ids, t, { unlinked }));
 }
 
 export function deleteSelection(ripple: boolean) {
@@ -204,7 +207,7 @@ export function deleteSelection(ripple: boolean) {
   // 3. a selected gap closes
   if (view.gap) {
     const g = view.gap;
-    editSeq('Close gap', (s) => ops.closeGap(s, g.trackId, (g.start + g.end) / 2));
+    editSeq('Ripple delete gap', (s) => void ops.rippleDeleteGap(s, g.trackId, (g.start + g.end) / 2));
     view.setGap(null);
     return;
   }
@@ -213,8 +216,9 @@ export function deleteSelection(ripple: boolean) {
   if (ids.length) {
     const magnetic = st.magnetic;
     const tracks = tracksOfClips(seq, ids);
+    const lo = linkOpts();
     editSeq(ripple ? 'Ripple delete' : 'Delete', (s) => {
-      ops.deleteClips(s, ids, ripple);
+      ops.deleteClips(s, ids, ripple, lo);
       if (magnetic && !ripple) closeGapsOn(s, tracks);
     });
     st.selectClips([]);
@@ -304,7 +308,8 @@ export function nudge(frames: number) {
   const ids = editableIds(seq, S().selection.clipIds);
   if (!ids.length) return;
   const d = frames * frameDur(seq);
-  editSeq(frames > 0 ? 'Nudge right' : 'Nudge left', (s) => ops.moveClips(s, ids, d, 0, 'overwrite'));
+  const lo = linkOpts();
+  editSeq(frames > 0 ? 'Nudge right' : 'Nudge left', (s) => void ops.moveClips(s, ids, d, 0, 'overwrite', lo));
 }
 
 export function moveSelectionTrack(dir: -1 | 1) {
@@ -312,7 +317,8 @@ export function moveSelectionTrack(dir: -1 | 1) {
   if (!seq) return;
   const ids = editableIds(seq, S().selection.clipIds);
   if (!ids.length) return;
-  editSeq(dir < 0 ? 'Move clips up a track' : 'Move clips down a track', (s) => ops.moveClips(s, ids, 0, dir, 'overwrite'));
+  const lo = linkOpts();
+  editSeq(dir < 0 ? 'Move clips up a track' : 'Move clips down a track', (s) => void ops.moveClips(s, ids, 0, dir, 'overwrite', { ...lo, anchorId: ids[0] }));
 }
 
 /** Q / W: ripple-trim the previous / next edit to the playhead on targeted tracks. */
@@ -321,45 +327,27 @@ export function rippleTrimToPlayhead(which: 'prev' | 'next') {
   const seq = currentSeq();
   if (!seq) return;
   const t = snapToFrame(st.playhead, seq.fps);
-  const clips = clipsAt(targetedTracks(seq), t).filter((c) => t > c.start + 1e-6 && t < c.start + c.duration - 1e-6);
-  if (!clips.length) return toast('No clip under the playhead on targeted tracks');
-  const seen = new Set<string>();
-  const ids: string[] = [];
-  for (const c of clips) {
-    if (c.linkId && seen.has(c.linkId)) continue;
-    if (c.linkId) seen.add(c.linkId);
-    ids.push(c.id);
-  }
-  const editPoint = Math.min(...clips.map((c) => c.start));
-  const ok = editSeq(which === 'prev' ? 'Ripple trim previous edit to playhead' : 'Ripple trim next edit to playhead', (s, p) => {
-    for (const id of ids) {
-      if (!findClip(s, id)) continue;
-      ops.trimClip(p, s, id, which === 'prev' ? 'start' : 'end', t, 'ripple');
-    }
+  const prev = which === 'prev' ? ops.prevEditPoint(seq, t + frameDur(seq) / 2, { targetedOnly: true, includeMarkers: false, includeInOut: false }) : null;
+  let done = false;
+  const ok = editSeq(which === 'prev' ? 'Ripple trim previous edit to playhead' : 'Ripple trim next edit to playhead', (s) => {
+    done = ops.trimToPlayhead(s, t, which === 'prev' ? 'start' : 'end', true);
   });
-  if (ok && which === 'prev') seek(editPoint);
+  if (ok && !done) return toast('No clip under the playhead on targeted tracks');
+  if (ok && which === 'prev' && prev !== null) seek(prev);
 }
 
-/** E: extend the selected edit (nearest edge of the selected clip) to the playhead. */
+/** E: extend the selected edit (or the edit nearest the playhead on targeted tracks) to the playhead. */
 export function extendEditToPlayhead() {
   const st = S();
   const seq = currentSeq();
   if (!seq) return;
-  const sel = selectedClips(seq);
-  if (!sel.length) return toast('Select a clip edge to extend');
   const t = snapToFrame(st.playhead, seq.fps);
-  const seen = new Set<string>();
-  editSeq('Extend edit', (s, p) => {
-    for (const c of sel) {
-      if (c.linkId && seen.has(c.linkId)) continue;
-      if (c.linkId) seen.add(c.linkId);
-      const end = c.start + c.duration;
-      const edge: 'start' | 'end' = t >= end ? 'end' : t <= c.start ? 'start' : t - c.start < end - t ? 'start' : 'end';
-      const tr = s.tracks.find((x) => x.clips.some((y) => y.id === c.id));
-      const neighbour = tr?.clips.find((o) => o.id !== c.id && (edge === 'end' ? Math.abs(o.start - end) < 1e-4 : Math.abs(o.start + o.duration - c.start) < 1e-4));
-      ops.trimClip(p, s, c.id, edge, t, neighbour ? 'roll' : 'normal');
-    }
+  const ids = editableIds(seq, st.selection.clipIds);
+  let done = false;
+  const ok = editSeq('Extend edit', (s, p) => {
+    done = ops.extendEdit(s, t, { clipIds: ids.length ? ids : undefined, project: p });
   });
+  if (ok && !done) toast('Nothing to extend to the playhead');
 }
 
 // ---------------------------------------------------------------------------
@@ -370,12 +358,17 @@ export function gotoEdit(dir: -1 | 1) {
   const st = S();
   const seq = currentSeq();
   if (!seq) return;
-  const targeted = seq.tracks.some((t) => t.targeted);
-  const times = editTimes(seq, (t) => (targeted ? t.targeted : true));
-  const t = st.playhead;
-  const eps = frameDur(seq) / 2;
-  const next = dir > 0 ? times.find((x) => x > t + eps) : [...times].reverse().find((x) => x < t - eps);
-  if (next !== undefined) {
+  const targetedOnly = seq.tracks.some((t) => t.targeted);
+  const opts = { targetedOnly, includeMarkers: false, includeInOut: false };
+  let next: number | null;
+  try {
+    next = dir > 0 ? ops.nextEditPoint(seq, st.playhead, opts) : ops.prevEditPoint(seq, st.playhead, opts);
+  } catch {
+    const times = editTimes(seq, (t) => (targetedOnly ? t.targeted : true));
+    const eps = frameDur(seq) / 2;
+    next = (dir > 0 ? times.find((x) => x > st.playhead + eps) : [...times].reverse().find((x) => x < st.playhead - eps)) ?? null;
+  }
+  if (next !== null) {
     seek(next);
     revealTime(next);
   }
@@ -543,10 +536,6 @@ export function applyAttributes(src: Clip, dst: Clip, o: AttrOptions) {
 // Transitions
 // ---------------------------------------------------------------------------
 
-function adjacentPrev(track: Track, clip: Clip): Clip | undefined {
-  return track.clips.find((o) => o.id !== clip.id && Math.abs(o.start + o.duration - clip.start) < 1e-4);
-}
-
 /** Mod+D / Mod+Shift+D: default transition on the selected clips, or at the edit nearest the playhead. */
 export function addDefaultTransition(audio: boolean) {
   const st = S();
@@ -577,19 +566,7 @@ export function addDefaultTransition(audio: boolean) {
   }
   if (!jobs.length) return toast(audio ? 'No audio edit to add a crossfade to' : 'No video edit to add a transition to');
   editSeq(audio ? 'Add audio crossfade' : 'Add default transition', (s) => {
-    for (const j of jobs) {
-      const f = findClip(s, j.id);
-      if (!f || f.track.locked) continue;
-      // a clip's tail transition only applies when nothing follows: use the follower's head instead
-      if (j.edge === 'end') {
-        const follower = f.track.clips.find((o) => Math.abs(o.start - (f.clip.start + f.clip.duration)) < 1e-4);
-        if (follower) {
-          ops.addTransition(s, follower.id, 'start', type, dur);
-          continue;
-        }
-      }
-      ops.addTransition(s, j.id, j.edge, type, dur);
-    }
+    for (const j of jobs) if (findClip(s, j.id)) ops.addTransition(s, j.id, j.edge, type, dur);
   });
 }
 
@@ -616,15 +593,7 @@ export function addTransitionAt(clipId: string, edge: 'start' | 'end', type: Tra
   const seq = currentSeq();
   if (!seq || !st.project) return;
   const dur = snapToFrame(st.project.settings.defaultTransitionDuration || 1, seq.fps);
-  editSeq('Add transition', (s) => {
-    const f = findClip(s, clipId);
-    if (!f) return;
-    if (edge === 'end') {
-      const follower = f.track.clips.find((o) => Math.abs(o.start - (f.clip.start + f.clip.duration)) < 1e-4);
-      if (follower) return ops.addTransition(s, follower.id, 'start', type, dur);
-    }
-    ops.addTransition(s, clipId, edge, type, dur);
-  });
+  editSeq('Add transition', (s) => ops.addTransition(s, clipId, edge, type, dur));
 }
 
 // ---------------------------------------------------------------------------
@@ -690,7 +659,7 @@ export function reverseClips(ids: string[]) {
     for (const id of ids) {
       const f = findClip(s, id);
       if (!f || f.track.locked || f.clip.kind !== 'media') continue;
-      ops.setSpeed(p, s, id, f.clip.speed, { reverse: !f.clip.reverse, keepDuration: true });
+      ops.setSpeed(p, s, id, f.clip.speed, { reverse: !f.clip.reverse, keepDuration: true, unlinked: true });
     }
   });
 }
@@ -735,110 +704,17 @@ export function nestSelection() {
   }
 }
 
-/**
- * Un-nest: replaces a nested sequence clip with the clips of that sequence
- * (trimmed to the used range), keeping their timing. Speed must be 100%.
- */
+/** Un-nest: replaces a nested sequence clip with its clips, keeping their timing. */
 export function unnestClip(clipId: string) {
   const st = S();
   const seq = currentSeq();
-  const p = st.project;
-  if (!seq || !p) return;
+  if (!seq) return;
   const f = findClip(seq, clipId);
   if (!f || f.clip.kind !== 'sequence' || !f.clip.sequenceId) return toast('Select a nested sequence clip');
-  if (Math.abs(f.clip.speed - 1) > 1e-6 || f.clip.reverse || f.clip.keyframes['time.speed']?.length) return toast('Un-nest needs the nested clip at 100% speed', 'error');
-  editProject('Un-nest', (draft) => {
-    const s = draft.sequences.find((x) => x.id === draft.activeSequenceId) ?? draft.sequences[0];
-    const found = findClip(s, clipId);
-    const inner = draft.sequences.find((x) => x.id === f.clip.sequenceId);
-    if (!found || !inner) return;
-    const outer = found.clip;
-    const a = outer.inPoint;
-    const b = outer.inPoint + outer.duration;
-    const offset = outer.start - outer.inPoint;
-    // partners: other clips of this nest linked to it (its audio)
-    const partners = outer.linkId ? s.tracks.flatMap((t) => t.clips.filter((c) => c.linkId === outer.linkId && c.id !== outer.id && c.sequenceId === outer.sequenceId)) : [];
-    const anchor: Record<TrackKind, number> = { video: -1, audio: -1, caption: -1 };
-    const vTracks = s.tracks.filter((t) => t.kind === 'video');
-    anchor.video = vTracks.indexOf(found.track);
-    const audioPartner = partners.map((c) => s.tracks.find((t) => t.clips.includes(c))).find((t) => t?.kind === 'audio');
-    anchor.audio = audioPartner ? s.tracks.filter((t) => t.kind === 'audio').indexOf(audioPartner) : 0;
-    // remove the nest and its partners
-    const remove = new Set([outer.id, ...partners.map((c) => c.id)]);
-    for (const t of s.tracks) t.clips = t.clips.filter((c) => !remove.has(c.id));
-    const linkMap = new Map<string, string>();
-    const groupMap = new Map<string, string>();
-    const remap = (m: Map<string, string>, id?: string) => {
-      if (!id) return undefined;
-      let v = m.get(id);
-      if (!v) m.set(id, (v = newId('lnk')));
-      return v;
-    };
-    const innerVideo = inner.tracks.filter((t) => t.kind === 'video');
-    const innerAudio = inner.tracks.filter((t) => t.kind === 'audio');
-    const place = (innerTrack: Track, kind: 'video' | 'audio', i: number) => {
-      const outerList = () => s.tracks.filter((t) => t.kind === kind);
-      // video: bottom inner track lands on the nest's track, higher ones above it
-      let target: Track | undefined;
-      if (kind === 'video') {
-        const fromBottom = innerVideo.length - 1 - i;
-        let idx = anchor.video - fromBottom;
-        while (idx < 0) {
-          const nt = makeTrack('video', `V${outerList().length + 1}`);
-          const firstVideo = s.tracks.findIndex((t) => t.kind === 'video');
-          s.tracks.splice(Math.max(0, firstVideo), 0, nt);
-          anchor.video += 1;
-          idx += 1;
-        }
-        target = outerList()[idx];
-      } else {
-        let idx = anchor.audio + i;
-        while (idx >= outerList().length) {
-          const nt = makeTrack('audio', `A${outerList().length + 1}`);
-          const lastAudio = s.tracks.map((t) => t.kind).lastIndexOf('audio');
-          s.tracks.splice(lastAudio >= 0 ? lastAudio + 1 : s.tracks.length, 0, nt);
-        }
-        target = outerList()[idx];
-      }
-      if (!target) return;
-      for (const c of innerTrack.clips) {
-        const cs = c.start;
-        const ce = c.start + c.duration;
-        if (ce <= a + 1e-9 || cs >= b - 1e-9) continue;
-        const copy = structuredClone(c) as Clip;
-        copy.id = newId('clip');
-        copy.linkId = remap(linkMap, c.linkId);
-        copy.groupId = remap(groupMap, c.groupId);
-        if (cs < a) {
-          const cut = a - cs;
-          copy.inPoint = c.reverse ? c.inPoint : sourceTimeAt(c, cut);
-          for (const list of Object.values(copy.keyframes)) for (const k of list) k.t -= cut;
-          copy.start = a;
-          copy.duration -= cut;
-          copy.transitionIn = null;
-          copy.fadeIn = 0;
-        }
-        if (ce > b) {
-          copy.duration = b - copy.start;
-          copy.transitionOut = null;
-          copy.fadeOut = 0;
-        }
-        if (c.reverse && ce > b && c.holdFrame === null) {
-          // reversed: the lowest source time now sits at the new (earlier) tail
-          const tailCut = ce - b;
-          copy.inPoint = c.inPoint + (tailCut / c.duration) * sourceSpan(c);
-        }
-        copy.start += offset;
-        // clear what is underneath on the target track (overwrite)
-        const s0 = copy.start;
-        const s1 = copy.start + copy.duration;
-        target.clips = target.clips.filter((o) => o.start + o.duration <= s0 + 1e-9 || o.start >= s1 - 1e-9);
-        target.clips.push(copy);
-      }
-    };
-    innerVideo.forEach((t, i) => place(t, 'video', i));
-    innerAudio.forEach((t, i) => place(t, 'audio', i));
-  });
+  let ids: string[] = [];
+  const ok = editSeq('Un-nest', (s, p) => void (ids = ops.unnestClip(p, s, clipId)));
+  if (ok && !ids.length) return toast('Can’t un-nest a reversed, ramped or frozen nested clip', 'error');
+  if (ok) st.selectClips(ids);
 }
 
 export function openNested(clipId: string) {
@@ -870,7 +746,13 @@ export function matchFrame(clipId?: string) {
   const st = S();
   const seq = currentSeq();
   if (!seq) return;
-  const clip = clipId ? findClip(seq, clipId)?.clip : clipAtPlayhead(seq, { needAsset: true });
+  if (!clipId && st.project) {
+    const r = ops.matchFrame(st.project, seq, st.playhead);
+    if (!r) return toast('No media under the playhead');
+    st.setSource({ assetId: r.assetId, time: r.sourceTime });
+    return;
+  }
+  const clip = clipId ? findClip(seq, clipId)?.clip : null;
   if (!clip) return toast('No clip under the playhead');
   if (clip.kind === 'sequence') return openNested(clip.id);
   if (!clip.assetId) return toast('This clip has no source media');

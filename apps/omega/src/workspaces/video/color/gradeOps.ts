@@ -4,7 +4,8 @@ import { clearKeyframes, isAnimated, paramAt, setParam } from '../../../engine/k
 import type { RGB } from '../../../engine/scopes/analysis';
 import { defaultGrade } from '../../../state/defaults';
 import type { Clip, ColorGrade, InputTransform, Project, RGBY } from '../../../state/types';
-import { OFFSET_SCALE } from './gradeModel';
+import { LOG_BLACK, WHEEL } from '../../../engine/color/grade';
+import { gainForMultiplier, LOG_SPAN, offsetForMultiplier, offsetForShift } from './gradeModel';
 import { lookOps, type LookDef } from './looks';
 
 export const WHEELS = ['lift', 'gamma', 'gain', 'offset'] as const;
@@ -116,40 +117,58 @@ export function effectiveInputTransform(clip: Clip, project: Project): InputTran
 
 /**
  * Applies an auto-balance solution at clip-local time `local`: temperature
- * and tint get the solved deltas, and any residual multiplier (beyond the
- * slider range) goes into the per-channel gain:
- *   (1 + gain.c + gain.y)·residual_c = 1 + gain′.c + gain.y
+ * and tint are set to the solved values, and any residual multiplier the
+ * sliders could not reach goes to the per-channel Offset (in the log grading
+ * space an offset is exactly a linear-light multiplier):
+ *   offset′.c = offset.c + log2(residual_c) / (17.52 · span · WHEEL.offset)
  */
 export function applyWhiteBalanceTo(clip: Clip, local: number, sol: { temperature: number; tint: number; residual: RGB }): void {
-  const t = paramAt(clip, 'grade.temperature', local);
-  const n = paramAt(clip, 'grade.tint', local);
-  setParam(clip, 'grade.temperature', local, r4(clamp(t + sol.temperature, -100, 100)));
-  setParam(clip, 'grade.tint', local, r4(clamp(n + sol.tint, -100, 100)));
-  if (sol.residual.some((r) => Math.abs(r - 1) > 0.005)) {
-    const gy = paramAt(clip, 'grade.gain.y', local);
+  setParam(clip, 'grade.temperature', local, r4(clamp(sol.temperature, -100, 100)));
+  setParam(clip, 'grade.tint', local, r4(clamp(sol.tint, -100, 100)));
+  if (sol.residual.some((r) => Math.abs(r - 1) > 0.004)) {
     (['r', 'g', 'b'] as const).forEach((c, k) => {
-      const gc = paramAt(clip, `grade.gain.${c}`, local);
-      setParam(clip, `grade.gain.${c}`, local, r4(clamp((1 + gc + gy) * sol.residual[k] - 1 - gy, -1, 1)));
+      const oc = paramAt(clip, `grade.offset.${c}`, local);
+      setParam(clip, `grade.offset.${c}`, local, r4(clamp(oc + offsetForMultiplier(sol.residual[k]), -1, 1)));
     });
   }
   clip.grade.enabled = true;
 }
 
 /**
- * Applies a shot-match solution (x′ = g·x + o per channel, then saturation)
- * on top of the current grade at clip-local time `local`:
- *   gain:   (1 + gain′.c + gain.y)   = g_c · (1 + gain.c + gain.y)
- *   offset: (offset′.c + offset.y)·k = g_c · (offset.c + offset.y)·k + o_c   (k = OFFSET_SCALE)
+ * Applies a shot-match solution solved in the wheels' normalized log domain
+ * (x′ = g·x + o per channel, then saturation) on top of the current grade.
+ *
+ * The log stage is: contrast around the pivot, then per channel n·G + O
+ * (G = 2^((y+c)·gainStops), O = (y+c)·WHEEL.offset), then saturation. The
+ * common part of the scale, k = ∛(g_r·g_g·g_b), goes to Contrast (wide range);
+ * in n units contrast·k maps n → k·n + d with d = (pivot − LOG_BLACK)(1 − k)/span.
+ * The per-channel rest g′ = g/k goes to Gain and the offsets absorb d:
+ *   contrast′ = contrast·k
+ *   G′ = g′·G                   →  gain′.c   = log2(G′)/gainStops − gain.y
+ *   O′ = g·O + o − G′·d         →  offset′.c = O′/WHEEL.offset − offset.y
  *   saturation′ = saturation · s
+ * Exact while lift and gamma are neutral; a close first step otherwise (run
+ * Match again to refine).
  */
 export function applyMatchTo(clip: Clip, local: number, sol: { gain: RGB; offset: RGB; saturation: number }): void {
+  const C = paramAt(clip, 'grade.contrast', local);
+  const pivot = paramAt(clip, 'grade.pivot', local);
+  const kWant = Math.cbrt(Math.max(1e-6, sol.gain[0] * sol.gain[1] * sol.gain[2]));
+  const C2 = r4(clamp(C * kWant, 0.05, 4));
+  const k = C > 1e-6 ? C2 / C : 1;
+  setParam(clip, 'grade.contrast', local, C2);
+  const d = ((pivot - LOG_BLACK) * (1 - k)) / LOG_SPAN;
   const gy = paramAt(clip, 'grade.gain.y', local);
   const oy = paramAt(clip, 'grade.offset.y', local);
-  (['r', 'g', 'b'] as const).forEach((c, k) => {
+  (['r', 'g', 'b'] as const).forEach((c, i) => {
     const gc = paramAt(clip, `grade.gain.${c}`, local);
-    setParam(clip, `grade.gain.${c}`, local, r4(clamp(sol.gain[k] * (1 + gc + gy) - 1 - gy, -1, 1)));
+    const gc2 = r4(clamp(gc + gainForMultiplier(sol.gain[i] / k), -1, 1));
+    setParam(clip, `grade.gain.${c}`, local, gc2);
+    const G2 = Math.pow(2, (gy + gc2) * WHEEL.gainStops);
     const oc = paramAt(clip, `grade.offset.${c}`, local);
-    setParam(clip, `grade.offset.${c}`, local, r4(clamp((sol.gain[k] * (oc + oy) * OFFSET_SCALE + sol.offset[k]) / OFFSET_SCALE - oy, -1, 1)));
+    const O = (oy + oc) * WHEEL.offset;
+    const O2 = sol.gain[i] * O + sol.offset[i] - G2 * d;
+    setParam(clip, `grade.offset.${c}`, local, r4(clamp(offsetForShift(O2) - oy, -1, 1)));
   });
   const s = paramAt(clip, 'grade.saturation', local);
   setParam(clip, 'grade.saturation', local, r4(clamp(s * sol.saturation, 0, 4)));

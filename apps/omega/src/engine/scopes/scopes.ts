@@ -260,14 +260,16 @@ export function histogram(frame: RGBAFrame): Histogram {
   return { r, g, b, y, total: n };
 }
 
-/** Log-scaled histogram curve (0..1 per bin) for drawing. */
+/** Log-scaled histogram curve (0..1 per bin, relative to `ref` or the tallest bin) for drawing. */
 export function histogramCurve(bins: Uint32Array, ref?: number): Float32Array {
   let max = ref ?? 0;
   if (ref === undefined) for (let i = 0; i < bins.length; i++) if (bins[i] > max) max = bins[i];
   const out = new Float32Array(bins.length);
   if (max <= 0) return out;
-  const norm = 1 / Math.log1p(max);
-  for (let i = 0; i < bins.length; i++) out[i] = Math.min(1, Math.log1p(bins[i]) * norm);
+  // log over two decades below the peak: 1 % of the peak reads ~0.15, the peak 1
+  const k = 100 / max;
+  const norm = 1 / Math.log1p(100);
+  for (let i = 0; i < bins.length; i++) out[i] = Math.min(1, Math.log1p(bins[i] * k) * norm);
   return out;
 }
 
@@ -336,6 +338,43 @@ export function legality(frame: RGBAFrame): LegalityStats {
 }
 
 // ---------------------------------------------------------------------------
+// Smoothing (phosphor bloom): a light [1 2 1] kernel along the level axis
+// (waveforms) or in 2D (vectorscope). Positions are unchanged; it only fills
+// the one-row gaps that 8-bit gradients leave in a 256-row scope.
+// ---------------------------------------------------------------------------
+
+export function smoothColumns(counts: Uint32Array, cols: number, rows: number): Float32Array {
+  const out = new Float32Array(counts.length);
+  for (let r = 0; r < rows; r++) {
+    const up = r > 0 ? (r - 1) * cols : -1;
+    const dn = r < rows - 1 ? (r + 1) * cols : -1;
+    const row = r * cols;
+    for (let c = 0; c < cols; c++) {
+      let v = counts[row + c] * 0.5;
+      if (up >= 0) v += counts[up + c] * 0.25;
+      if (dn >= 0) v += counts[dn + c] * 0.25;
+      out[row + c] = v;
+    }
+  }
+  return out;
+}
+
+export function smooth2d(counts: Uint32Array, size: number): Float32Array {
+  const tmp = smoothColumns(counts, size, size);
+  const out = new Float32Array(tmp.length);
+  for (let r = 0; r < size; r++) {
+    const row = r * size;
+    for (let c = 0; c < size; c++) {
+      let v = tmp[row + c] * 0.5;
+      if (c > 0) v += tmp[row + c - 1] * 0.25;
+      if (c < size - 1) v += tmp[row + c + 1] * 0.25;
+      out[row + c] = v;
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Tone: counts → log density → phosphor RGBA
 // ---------------------------------------------------------------------------
 
@@ -343,7 +382,7 @@ export function legality(frame: RGBAFrame): LegalityStats {
  * Log-scaled density in 0..1: log(1 + c·k) / log(1 + ref·k).
  * `ref` defaults to the largest count; `gain` (k) brightens faint traces.
  */
-export function logDensity(counts: Uint32Array, gain = 1, ref?: number): Float32Array {
+export function logDensity(counts: Uint32Array | Float32Array, gain = 1, ref?: number): Float32Array {
   let max = ref ?? 0;
   if (ref === undefined) for (let i = 0; i < counts.length; i++) if (counts[i] > max) max = counts[i];
   const out = new Float32Array(counts.length);
@@ -414,6 +453,8 @@ export interface ScopeRequest {
   vectorZoom?: number;
   /** Trace brightness (log gain). Default 1. */
   gain?: number;
+  /** Trace colour (default PHOSPHOR); one tint for every channel of the parade when set. */
+  tint?: Tint;
 }
 
 export interface HistogramCurves {
@@ -452,14 +493,14 @@ export function analyze(frame: RGBAFrame, req: ScopeRequest): ScopeResult {
   const res: ScopeResult = { frameWidth: frame.width, frameHeight: frame.height, ms: 0 };
   if (req.waveform) {
     const acc = waveformLuma(frame, cols, rows);
-    res.waveform = paintPhosphor(logDensity(acc.counts, gain, waveRef(frame, acc.cols)), acc.cols, rows, PHOSPHOR);
+    res.waveform = paintPhosphor(logDensity(smoothColumns(acc.counts, acc.cols, rows), gain, waveRef(frame, acc.cols)), acc.cols, rows, req.tint ?? PHOSPHOR);
   }
   if (req.parade) {
     const accs = waveformParade(frame, cols, rows);
     const c = accs[0].cols;
     const img: ScopeImage = { width: c * 3, height: rows, data: new Uint8ClampedArray(c * 3 * rows * 4) };
     const ref = waveRef(frame, c);
-    accs.forEach((a, k) => paintPhosphor(logDensity(a.counts, gain, ref), c, rows, PARADE_TINTS[k], img, k * c, c * 3));
+    accs.forEach((a, k) => paintPhosphor(logDensity(smoothColumns(a.counts, c, rows), gain, ref), c, rows, req.tint ?? PARADE_TINTS[k], img, k * c, c * 3));
     res.parade = img;
   }
   if (req.vectorscope) {
@@ -467,7 +508,7 @@ export function analyze(frame: RGBAFrame, req: ScopeRequest): ScopeResult {
     const acc = vectorscope(frame, size, req.vectorZoom ?? 1);
     // vectorscope bins concentrate heavily; reference on a fraction of the frame
     const ref = Math.max(1, (frame.width * frame.height) / 40);
-    res.vectorscope = paintPhosphor(logDensity(acc.counts, gain * 2, ref), size, size, PHOSPHOR);
+    res.vectorscope = paintPhosphor(logDensity(smooth2d(acc.counts, size), gain * 2, ref), size, size, req.tint ?? PHOSPHOR);
   }
   if (req.histogram) {
     const h = histogram(frame);

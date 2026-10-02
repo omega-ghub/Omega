@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+// New-project dialog of the hub. It takes on the app's own accent (Delta
+// purple, …) so each app feels like its own product. OWNED BY THE SHELL PACKAGE.
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { AppMark } from '../brand/Logos';
 import { THEMES, type AppKind } from '../brand/themes';
 import { COLOR_SPACES, DEFAULT_SETTINGS, FRAME_RATES, PROJECT_PRESETS, SAMPLE_RATES, aspectLabel, isDropFrameRate } from '../state/presets';
@@ -79,24 +81,25 @@ export function NewProjectDialog({ app }: { app: AppKind }) {
 
   const aspect = aspectLabel(settings.width, settings.height);
   const previewRatio = settings.width / settings.height;
+  const accent = { '--accent': t.accent, '--accent-deep': t.accentDeep, '--accent-soft': t.accentSoft } as CSSProperties;
 
   return (
-    <Modal onClose={close} width={1000} className="newproj">
+    <Modal onClose={close} width={980} className="newproj" style={accent} testId="hub-new-project" label={`New ${t.name} project`} dismissible={!busy}>
       <div className="newproj__head">
-        <AppMark app={app} size={36} />
+        <AppMark app={app} size={40} />
         <div>
           <div className="newproj__eyebrow">{t.category}</div>
           <div className="newproj__title">New {t.name} project</div>
           <div className="newproj__sub">{t.available ? t.tagline : `${t.name} is planned for ${t.phase}. You can set up the project now; the workspace opens in preview.`}</div>
         </div>
-        <button className="icon-btn newproj__close" onClick={close} aria-label="Close">
-          <I.Close />
+        <button className="icon-btn icon-btn--sm newproj__close" onClick={close} aria-label="Close" data-tip="Close" data-tip-keys="Escape">
+          <I.Close size={16} />
         </button>
       </div>
 
       <div className="newproj__body">
         <div className="newproj__left">
-          <div className="label">Where is this going?</div>
+          <div className="label">Where is it going?</div>
           <div className="dest-grid">
             {DESTINATIONS.map((d) => (
               <button key={d.id} className={`dest ${destination === d.id ? 'is-active' : ''}`} onClick={() => setDestination(d.id)}>
@@ -124,7 +127,8 @@ export function NewProjectDialog({ app }: { app: AppKind }) {
           )}
           {destination === 'match' && (
             <div className="note">
-              The sequence takes its frame size and frame rate from the first video you import. You can change it later in the Inspector.
+              <I.Info size={15} />
+              <span>The sequence takes its frame size and frame rate from the first video you import. You can change it later in sequence settings.</span>
             </div>
           )}
         </div>
@@ -138,8 +142,8 @@ export function NewProjectDialog({ app }: { app: AppKind }) {
             <span>Location</span>
             <div className="field__row">
               <input value={location} onChange={(e) => setLocation(e.target.value)} />
-              <button className="btn btn--ghost" onClick={browse}>
-                Browse…
+              <button className="btn" onClick={browse}>
+                <I.Folder size={15} /> Browse…
               </button>
             </div>
             <span className="field__hint">
@@ -178,8 +182,8 @@ export function NewProjectDialog({ app }: { app: AppKind }) {
             </div>
           </div>
 
-          <button className="disclosure" onClick={() => setAdvanced((v) => !v)}>
-            <I.ChevronDown size={16} style={{ transform: advanced ? 'rotate(180deg)' : undefined }} /> Advanced settings
+          <button className="disclosure" onClick={() => setAdvanced((v) => !v)} aria-expanded={advanced}>
+            <I.ChevronRight size={14} style={{ transform: advanced ? 'rotate(90deg)' : undefined }} /> Advanced settings
           </button>
           {advanced && (
             <div className="advanced">
@@ -223,16 +227,21 @@ export function NewProjectDialog({ app }: { app: AppKind }) {
                   </select>
                 </label>
               </div>
-              <p className="muted">Pixel aspect ratio is square and fields are progressive. Interlaced and anamorphic workflows will arrive with broadcast delivery.</p>
+              <p className="muted" style={{ fontSize: 12, lineHeight: 1.5 }}>Pixels are square and frames progressive.</p>
             </div>
           )}
 
-          {error && <div className="error">{error}</div>}
+          {error && (
+            <div className="note note--danger">
+              <I.Warning size={15} />
+              <span>{error}</span>
+            </div>
+          )}
           <div className="newproj__actions">
-            <button className="btn btn--ghost" onClick={close}>
+            <button className="btn btn--ghost" onClick={close} disabled={busy}>
               Cancel
             </button>
-            <button className="btn btn--accent btn--large" onClick={submit} disabled={busy}>
+            <button className="btn btn--primary btn--tinted btn--lg" onClick={submit} disabled={busy} data-testid="hub-create-project">
               {busy ? 'Creating…' : 'Create project'}
             </button>
           </div>

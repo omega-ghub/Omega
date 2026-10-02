@@ -1,6 +1,7 @@
-// Curve math for the curves editor: monotone cubic interpolation
-// (Fritsch–Carlson), so a curve never overshoots between its points (no
-// ringing, no inverted tones from a gentle S). Pure; unit-tested.
+// Curve helpers for the curves editor. Interpolation is the renderer's
+// monotone cubic (Fritsch–Carlson), so a curve never overshoots between its
+// points and the editor draws exactly what the renderer applies. Pure; unit-tested.
+import { monotoneCurve } from '../../../engine/color/curves';
 import type { CurvePoint } from '../../../state/types';
 
 /** Points sorted by x with the implied (0,0) / (1,1) endpoints added when absent. */
@@ -22,65 +23,13 @@ export function normalizeCurve(points: readonly CurvePoint[]): CurvePoint[] {
   return withEndpoints(points).map((p) => ({ x: round4(p.x), y: round4(p.y) }));
 }
 
-/** Fritsch–Carlson tangents for sorted points. */
-export function monotoneTangents(xs: readonly number[], ys: readonly number[]): number[] {
-  const n = xs.length;
-  if (n < 2) return [0];
-  const d: number[] = [];
-  for (let k = 0; k < n - 1; k++) {
-    const h = xs[k + 1] - xs[k];
-    d.push(h > 1e-9 ? (ys[k + 1] - ys[k]) / h : 0);
-  }
-  const m = new Array<number>(n);
-  m[0] = d[0];
-  m[n - 1] = d[n - 2];
-  for (let k = 1; k < n - 1; k++) m[k] = d[k - 1] * d[k] > 0 ? (d[k - 1] + d[k]) / 2 : 0;
-  for (let k = 0; k < n - 1; k++) {
-    if (d[k] === 0) {
-      m[k] = 0;
-      m[k + 1] = 0;
-      continue;
-    }
-    const a = m[k] / d[k];
-    const b = m[k + 1] / d[k];
-    if (a < 0) m[k] = 0;
-    if (b < 0) m[k + 1] = 0;
-    const s = a * a + b * b;
-    if (s > 9) {
-      const t = 3 / Math.sqrt(s);
-      m[k] = t * a * d[k];
-      m[k + 1] = t * b * d[k];
-    }
-  }
-  return m;
-}
-
-/** A compiled curve: evaluate many times without re-solving tangents. */
+/**
+ * A compiled curve, evaluated exactly like the renderer bakes it
+ * (engine/color/curves.ts: monotone cubic, implied endpoints).
+ */
 export function compileCurve(points: readonly CurvePoint[]): (x: number) => number {
   if (!points.length) return (x) => clamp01(x);
-  const pts = withEndpoints(points);
-  const xs = pts.map((p) => p.x);
-  const ys = pts.map((p) => p.y);
-  const m = monotoneTangents(xs, ys);
-  const n = pts.length;
-  return (x: number) => {
-    if (x <= xs[0]) return ys[0];
-    if (x >= xs[n - 1]) return ys[n - 1];
-    let lo = 0;
-    let hi = n - 1;
-    while (hi - lo > 1) {
-      const mid = (lo + hi) >> 1;
-      if (xs[mid] <= x) lo = mid;
-      else hi = mid;
-    }
-    const h = xs[hi] - xs[lo];
-    if (h <= 1e-9) return ys[hi];
-    const t = (x - xs[lo]) / h;
-    const t2 = t * t;
-    const t3 = t2 * t;
-    const v = (2 * t3 - 3 * t2 + 1) * ys[lo] + (t3 - 2 * t2 + t) * h * m[lo] + (-2 * t3 + 3 * t2) * ys[hi] + (t3 - t2) * h * m[hi];
-    return clamp01(v);
-  };
+  return monotoneCurve(points as CurvePoint[]);
 }
 
 export function evalCurve(points: readonly CurvePoint[], x: number): number {

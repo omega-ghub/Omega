@@ -63,7 +63,7 @@ export function breakLines(text: string, maxWidth: number, measure: (s: string) 
       out.push(para);
       continue;
     }
-    const words = para.split(/ +/).filter((w, i, a) => w !== '' || a.length === 1);
+    const words = para.split(/ +/).filter((w, _i, a) => w !== '' || a.length === 1);
     let line = '';
     const pushLong = (word: string) => {
       // break an over-long word by characters; the remainder continues the line
@@ -313,8 +313,9 @@ export function colorWithAlpha(hex: string, alpha: number): string {
 // Canvas cache and pool
 // ===========================================================================
 
-/** Pixel budget for cached rasters (~256 MB of RGBA). */
-const CACHE_PIXELS = 64e6;
+/** Budget for cached rasters: ~160 MB of RGBA, and at most this many entries. */
+const CACHE_PIXELS = 40e6;
+const CACHE_ENTRIES = 48;
 const POOL_PER_SIZE = 3;
 const cache = new Map<string, Raster>();
 let cachedPixels = 0;
@@ -383,7 +384,7 @@ function cachedRaster(key: string, w: number, h: number, draw: (ctx: Ctx, c: Ras
   versions.set(c, ++versionSeq);
   cache.set(key, c);
   cachedPixels += c.width * c.height;
-  while (cachedPixels > CACHE_PIXELS && cache.size > 1) {
+  while ((cachedPixels > CACHE_PIXELS || cache.size > CACHE_ENTRIES) && cache.size > 1) {
     const [k, old] = cache.entries().next().value as [string, Raster];
     cache.delete(k);
     cachedPixels -= old.width * old.height;

@@ -136,8 +136,9 @@ test('range: entire, in/out, custom, frame and errors', () => {
   near(r.end, 1.0);
   assert.throws(() => resolveRange({ mode: 'custom', start: 5, end: 5 }, seq(10)), /empty/);
   assert.throws(() => resolveRange({ mode: 'entire' }, seq(0)), /empty/);
+  // the frame on screen at 2.5 s (between frames 62 and 63) is frame 62
   const f = resolveRange({ mode: 'frame', time: 2.5 }, seq(10, 25));
-  near(f.start, 2.5);
+  near(f.start, 2.48);
   near(f.end - f.start, 1 / 25);
   // a frame past the end clamps to the last frame
   const last = resolveRange({ mode: 'frame', time: 99 }, seq(10, 25));

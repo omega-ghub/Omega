@@ -8,7 +8,7 @@ export interface AssetUsage {
 }
 
 /** Every sequence that uses the asset, with the clip ids (empty array = unused). */
-export function assetUsage(project: Project, assetId: string): AssetUsage[] {
+export function assetUsage(project: Pick<Project, 'sequences'>, assetId: string): AssetUsage[] {
   const out: AssetUsage[] = [];
   for (const seq of project.sequences) {
     const clipIds: string[] = [];
@@ -19,21 +19,21 @@ export function assetUsage(project: Project, assetId: string): AssetUsage[] {
 }
 
 /** Ids of every asset referenced by at least one clip in any sequence. */
-export function usedAssetIds(project: Project): Set<string> {
+export function usedAssetIds(project: Pick<Project, 'sequences'>): Set<string> {
   const used = new Set<string>();
   for (const seq of project.sequences) for (const t of seq.tracks) for (const c of t.clips) if (c.assetId) used.add(c.assetId);
   return used;
 }
 
 /** Number of clips (all sequences) that use each asset. */
-export function clipCountByAsset(project: Project): Map<string, number> {
+export function clipCountByAsset(project: Pick<Project, 'sequences'>): Map<string, number> {
   const m = new Map<string, number>();
   for (const seq of project.sequences) for (const t of seq.tracks) for (const c of t.clips) if (c.assetId) m.set(c.assetId, (m.get(c.assetId) ?? 0) + 1);
   return m;
 }
 
 /** Removes every clip that uses one of the assets (lift: leaves gaps). Call on a draft. */
-export function removeClipsOfAssets(project: Project, assetIds: Set<string>): number {
+export function removeClipsOfAssets(project: Pick<Project, 'sequences'>, assetIds: Set<string>): number {
   let n = 0;
   for (const seq of project.sequences) {
     for (const t of seq.tracks) {

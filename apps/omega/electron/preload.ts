@@ -62,6 +62,10 @@ const api: OmegaApi = {
     writeText: (path, text) => ipcRenderer.invoke('file:writeText', path, text),
     pathForFile: (file) => webUtils.getPathForFile(file),
     showInFolder: (path) => ipcRenderer.send('file:showInFolder', path),
+    openWrite: (path) => ipcRenderer.invoke('file:openWrite', path),
+    writeAt: (handle, data, position) => ipcRenderer.invoke('file:writeAt', handle, data, position),
+    closeWrite: (handle, opts) => ipcRenderer.invoke('file:closeWrite', handle, !!opts?.discard),
+    freeSpace: (path) => ipcRenderer.invoke('file:freeSpace', path),
   },
 };
 

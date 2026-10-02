@@ -8,11 +8,11 @@
 // Usage: <I.Razor size={16} />. Packages that need a new glyph build it with
 // <IconBase> in their own icons.tsx, in the same style.
 
-import type { ReactNode, SVGProps } from 'react';
+import type { ReactElement, ReactNode, SVGProps } from 'react';
 
 type P = SVGProps<SVGSVGElement> & { size?: number };
 export type IconProps = P;
-export type IconComponent = (p: P) => ReactNode;
+export type IconComponent = (p: P) => ReactElement;
 
 export function IconBase({ size = 18, children, ...rest }: P) {
   return (
@@ -35,7 +35,7 @@ export function IconBase({ size = 18, children, ...rest }: P) {
 }
 
 /** Builds an icon component from static children (elements are immutable and safely shared). */
-function icon(children: ReactNode, defaults?: Partial<P>): (p: P) => ReactNode {
+function icon(children: ReactNode, defaults?: Partial<P>): (p: P) => ReactElement {
   const Icon = (p: P) => (
     <IconBase {...defaults} {...p}>
       {children}
@@ -898,6 +898,55 @@ export const I = {
       <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6" />
       <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6" />
       <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6" />
+    </>,
+  ),
+  // hub navigation (refined set)
+  NavHome: icon(
+    <>
+      <path d="M3.8 10.6L12 4l8.2 6.6" />
+      <path d="M6 9v9.5A1.5 1.5 0 0 0 7.5 20h9a1.5 1.5 0 0 0 1.5-1.5V9" />
+      <path d="M10 20v-4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V20" />
+    </>,
+  ),
+  NavApps: icon(
+    <>
+      <rect x="4" y="4" width="6.5" height="6.5" rx="1.8" />
+      <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8" />
+      <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8" />
+      <path d="M16.75 4v6.5M13.5 7.25H20" />
+    </>,
+  ),
+  NavProjects: icon(
+    <>
+      <path d="M3.5 7.5a2 2 0 0 1 2-2h3.6a1.5 1.5 0 0 1 1.1.5l1.5 1.7h6.8a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" />
+      <path d="M3.5 10.5h17" />
+    </>,
+  ),
+  NavLearn: icon(
+    <>
+      <path d="M2.8 9.4L12 5l9.2 4.4L12 13.8z" />
+      <path d="M6.5 11.4v4.3c0 1.5 2.5 2.8 5.5 2.8s5.5-1.3 5.5-2.8v-4.3" />
+      <path d="M21.2 9.4v4.6" />
+    </>,
+  ),
+  NavPlans: icon(
+    <>
+      <path d="M7.2 4.5h9.6a1 1 0 0 1 .8.4l2.9 3.9a.6.6 0 0 1-.03.75L12.4 19a.5.5 0 0 1-.8 0L3.53 9.55a.6.6 0 0 1-.03-.75l2.9-3.9a1 1 0 0 1 .8-.4z" />
+      <path d="M3.6 9h16.8" />
+      <path d="M9.4 4.6L8.3 9l3.7 10 3.7-10-1.1-4.4" />
+    </>,
+  ),
+  NavSettings: icon(
+    <>
+      <path d={GEAR_PATH} />
+      <circle cx="12" cy="12" r="2.6" />
+    </>,
+  ),
+  SidebarToggle: icon(
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <path d="M9 4v16" />
+      <path d="M13.5 10l2 2-2 2" />
     </>,
   ),
   Book: icon(

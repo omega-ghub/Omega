@@ -258,6 +258,8 @@ export interface ClipAudio {
   mute: boolean;
   fadeIn: number; // seconds
   fadeOut: number;
+  /** Shape of fadeIn/fadeOut: linear amplitude (default) or equal power (sin/cos). */
+  fadeCurve?: 'linear' | 'equalPower';
   /** Which source channels feed the clip. */
   channelMode: 'stereo' | 'left' | 'right' | 'mono' | 'swap';
   eq: {

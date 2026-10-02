@@ -268,3 +268,37 @@ export function rms(data: Float32Array, from = 0, to = data.length): number {
   for (let i = a; i < b; i++) s += data[i] * data[i];
   return Math.sqrt(s / (b - a));
 }
+
+/**
+ * The automatic makeup gain Chromium's DynamicsCompressorNode applies on top
+ * of its static curve ((1 / gain at 0 dBFS)^0.6, per the Web Audio spec's
+ * processing model). The engine divides it back out so the clip's `makeup`
+ * parameter means exactly what it says.
+ */
+export function webAudioCompressorMakeup(thresholdDb: number, kneeDb: number, ratio: number): number {
+  const lin = (db: number) => Math.pow(10, db / 20);
+  const db = (x: number) => (x > 0 ? 20 * Math.log10(x) : -1000);
+  const T = clamp(thresholdDb, -100, 0);
+  const K = clamp(kneeDb, 0, 40);
+  const R = clamp(ratio, 1, 20);
+  const linT = lin(T);
+  const kneeCurve = (x: number, k: number) => (x < linT ? x : linT + (1 - Math.exp(-k * (x - linT))) / k);
+  const slopeAt = (x: number, k: number) => {
+    if (x < linT) return 1;
+    const x2 = x * 1.001;
+    return (db(kneeCurve(x2, k)) - db(kneeCurve(x, k))) / (db(x2) - db(x));
+  };
+  const xKnee = lin(T + K);
+  let minK = 0.1;
+  let maxK = 10000;
+  let k = 5;
+  for (let i = 0; i < 15; i++) {
+    if (slopeAt(xKnee, k) < 1 / R) maxK = k;
+    else minK = k;
+    k = Math.sqrt(minK * maxK);
+  }
+  const yKneeDb = db(kneeCurve(xKnee, k));
+  const saturate = (x: number) => (x < xKnee ? kneeCurve(x, k) : lin(yKneeDb + (db(x) - (T + K)) / R));
+  const full = saturate(1);
+  return full > 0 ? Math.pow(1 / full, 0.6) : 1;
+}

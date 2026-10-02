@@ -78,14 +78,24 @@ export function fileUrl(path: string): string {
 /** Inverse of fileUrl (also accepts plain paths). */
 export function pathFromUrl(url: string): string {
   if (!/^file:/i.test(url)) return url;
-  let rest = url.replace(/^file:(\/\/localhost)?/i, '');
-  if (rest.startsWith('//')) {
-    // file://server/share → UNC
-    return decodeURIComponent(rest).replace(/\//g, '\\');
-  }
-  rest = decodeURIComponent(rest);
+  let rest: string;
+  if (/^file:\/\/localhost\//i.test(url)) rest = url.slice('file://localhost'.length);
+  else if (/^file:\/\/\//i.test(url)) rest = url.slice('file://'.length);
+  else if (/^file:\/\/[^/]/i.test(url)) {
+    // file://server/share/… → UNC path
+    return '\\\\' + safeDecode(url.slice('file://'.length)).replace(/\//g, '\\');
+  } else rest = url.slice('file:'.length);
+  rest = safeDecode(rest);
   if (/^\/[a-zA-Z]:\//.test(rest)) return rest.slice(1);
   return rest;
+}
+
+function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
 }
 
 export function xmlEscape(s: string): string {

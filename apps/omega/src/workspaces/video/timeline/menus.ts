@@ -10,6 +10,7 @@ import { findClip } from '../../../state/types';
 import { displayKey, keysFor } from '../actions';
 import { labelHex, LABEL_LIST } from './colors';
 import * as cmd from './commands';
+import { ctlRef } from './ctlRef';
 import { transitionName } from './draw';
 import { useTLView, type MenuItem } from './view';
 
@@ -117,8 +118,7 @@ export function clipMenu(clipId: string, t: number): MenuItem[] {
 }
 
 export function startRename(clipId: string) {
-  const ctl = (window as unknown as { __deltaTimelineCtl?: { clipClientRect(id: string): DOMRect | null } }).__deltaTimelineCtl;
-  const r = ctl?.clipClientRect(clipId);
+  const r = ctlRef.current?.clipClientRect(clipId);
   if (!r) return;
   useTLView.getState().setInline({ kind: 'clipName', clipId, x: r.x, y: r.y, w: Math.max(160, Math.min(r.width, 320)), h: Math.min(r.height, 24) });
 }

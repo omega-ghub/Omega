@@ -71,8 +71,7 @@ export interface MixPlan {
 const ADJ = 1e-3; // clips closer than this are adjacent (as in render/graph.ts)
 
 export function fadeCurveOf(clip: Clip): FadeCurve {
-  const c = (clip.audio as { fadeCurve?: FadeCurve }).fadeCurve;
-  return c === 'equalPower' ? 'equalPower' : 'linear';
+  return clip.audio.fadeCurve === 'equalPower' ? 'equalPower' : 'linear';
 }
 
 /** Which audio tracks are audible given mute and solo. */
@@ -278,7 +277,7 @@ function planTrack(project: Project, seq: Sequence, track: Track): ClipPlan[] {
         }
       } else if (cp) {
         // Fade in from nothing, centered on the head when the source has handles.
-        const pre = Math.min(d / 2, handles(cp).head);
+        const pre = Math.max(0, Math.min(d / 2, handles(cp).head, cp.start));
         const a = cp.start - pre;
         cp.fades.push({ a, b: a + d, dir: 'in', curve, ease });
         cp.t0 = Math.min(cp.t0, a);
@@ -321,6 +320,7 @@ function signature(cp: ClipPlan): string {
     kf('audio.gain'),
     kf('audio.pan'),
     c.audio.channelMode,
+    c.audio.fadeCurve ?? 'linear',
     c.audio.eq.enabled,
     c.audio.comp.enabled,
     cp.t0,
@@ -364,7 +364,7 @@ export function clipsInRange(plan: MixPlan, a: number, b: number, audibleOnly = 
  * (applied with setValueAtTime). Returns [t0, v0, t1, v1, ...].
  */
 export function automation(fn: (t: number) => number, a: number, b: number, knotTimes: number[], step = 0.01): number[] {
-  const ks = [a, ...knotTimes.filter((k) => k > a + 1e-9 && k < b - 1e-9), b].sort((x, y) => x - y);
+  const ks = [a, ...knotTimes.filter((k) => k > a + 1e-9 && k < b - 1e-9), b].sort((x, y) => x - y).filter((k, i, arr) => i === 0 || k - arr[i - 1] > 1e-9);
   const pts: number[] = [];
   const push = (t: number, v: number) => {
     const n = pts.length;
@@ -372,33 +372,40 @@ export function automation(fn: (t: number) => number, a: number, b: number, knot
     pts.push(t, v);
   };
   const D = 1e-7;
+  const jumpAt = (k: number): [number, number] | null => {
+    const vL = fn(k - D);
+    const vR = fn(k + D);
+    return Math.abs(vL - vR) > 1e-5 ? [vL, vR] : null;
+  };
+  let v0 = fn(ks[0]);
+  push(ks[0], v0);
   for (let i = 0; i < ks.length - 1; i++) {
     const k0 = ks[i];
     const k1 = ks[i + 1];
-    if (k1 - k0 < 1e-9) continue;
-    const vL = i === 0 ? fn(k0) : fn(k0 - D);
-    const v0 = fn(Math.min(k0 + D, k1));
-    if (i === 0) push(k0, v0);
-    else {
-      if (Math.abs(vL - v0) > 1e-5) push(k0, vL);
-      push(k0, v0);
-    }
-    const v1 = fn(Math.max(k1 - D, k0));
+    const last = i === ks.length - 2;
+    const jump = last ? null : jumpAt(k1);
+    const v1 = jump ? jump[0] : fn(k1);
     const span = k1 - k0;
-    // linear (incl. flat) when quarter points sit on the chord
-    let linear = true;
-    for (const q of [0.25, 0.5, 0.75]) {
-      const v = fn(k0 + span * q);
-      if (Math.abs(v - (v0 + (v1 - v0) * q)) > 1e-4 * Math.max(1, Math.abs(v))) {
-        linear = false;
-        break;
+    if (span > 1e-9) {
+      // linear (incl. flat) when quarter points sit on the chord
+      let linear = true;
+      for (const q of [0.25, 0.5, 0.75]) {
+        const v = fn(k0 + span * q);
+        if (Math.abs(v - (v0 + (v1 - v0) * q)) > 1e-4 * Math.max(1, Math.abs(v))) {
+          linear = false;
+          break;
+        }
+      }
+      if (!linear) {
+        const n = Math.max(2, Math.ceil(span / step));
+        for (let j = 1; j < n; j++) push(k0 + (span * j) / n, fn(k0 + (span * j) / n));
       }
     }
-    if (!linear) {
-      const n = Math.max(2, Math.ceil(span / step));
-      for (let j = 1; j < n; j++) push(k0 + (span * j) / n, fn(k0 + (span * j) / n));
-    }
     push(k1, v1);
+    if (jump) {
+      push(k1, jump[1]);
+      v0 = jump[1];
+    } else v0 = v1;
   }
   return pts;
 }
