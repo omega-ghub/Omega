@@ -27,6 +27,11 @@ if (!['win', 'mac', 'linux'].includes(platform)) {
 }
 
 const env = { ...process.env }
+// CI passes unset secrets as empty strings; electron-builder treats an empty
+// CSC_LINK / APPLE_* as "provided" and fails, so drop them entirely.
+for (const k of Object.keys(env)) {
+  if (/^(CSC_|WIN_CSC_|APPLE_|AZURE_)/.test(k) && env[k].trim() === '') delete env[k]
+}
 const has = (...keys) => keys.every((k) => env[k] && env[k].trim() !== '')
 const args = [`--${platform}`, '--publish', 'never']
 
