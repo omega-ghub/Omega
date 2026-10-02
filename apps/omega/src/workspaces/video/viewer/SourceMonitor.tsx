@@ -35,7 +35,6 @@ function Source() {
   const storeTime = useEditor((s) => s.source.time);
   const asset = useEditor((s) => (s.source.assetId ? (s.project?.assets.find((a) => a.id === s.source.assetId) ?? null) : null));
   const useProxies = useEditor((s) => s.viewer.useProxies);
-  const focused = useViewerUi((s) => s.focus === 'source');
   const sp = getSourcePlayer();
   const [, tick] = useReducer((n: number) => n + 1, 0);
   const holder = useRef<HTMLDivElement>(null);
@@ -128,21 +127,7 @@ function Source() {
   const rangeDur = markIn !== null || markOut !== null ? Math.max(0, (markOut ?? duration) - (markIn ?? 0)) : duration;
 
   return (
-    <section className={`panel vw-monitor vw-source ${focused && asset ? 'is-focused' : ''}`} data-testid="vw-source" data-vw-monitor="source" aria-label="Source monitor">
-      <header className="panel__head vw-head">
-        <span className="panel__title">Source</span>
-        <span className="panel__subtitle vw-head__name" data-testid="vw-source-name">
-          {asset?.name ?? ''}
-        </span>
-        {asset && (
-          <span className="vw-head__meta">
-            {asset.width && asset.height ? `${asset.width}×${asset.height}` : ''}
-            {asset.fps ? ` · ${Math.round(asset.fps * 1000) / 1000} fps` : ''}
-            {isAudio && asset.sampleRate ? `${asset.sampleRate / 1000} kHz${asset.channels ? ` · ${asset.channels} ch` : ''}` : ''}
-          </span>
-        )}
-      </header>
-
+    <div className="vw-monitor vw-source" data-testid="vw-source" data-vw-monitor="source" aria-label="Source monitor">
       <div ref={stageRef} className="vw-stage vw-source__stage">
         {!asset && (
           <div className="vw-empty" data-testid="vw-source-empty">
@@ -164,7 +149,6 @@ function Source() {
               e.dataTransfer.setData('text/plain', asset.name);
               e.dataTransfer.effectAllowed = 'copy';
             }}
-            onClick={() => useViewerUi.getState().setFocus('source')}
           >
             {isImage ? (
               <img className="vw-source__img" src={mediaUrl(asset.path)} alt={asset.name} draggable={false} crossOrigin="anonymous" />
@@ -192,11 +176,42 @@ function Source() {
 
       <footer className={`vw-transport ${asset ? '' : 'is-disabled'}`}>
         <ScrubBar time={time} duration={isImage ? 0 : duration} inPoint={markIn} outPoint={markOut} onScrub={(t) => sp.seek(t)} testId="vw-source-scrub" />
-        <div className="vw-row">
-          <div className="vw-row__left">
+        <div className="vw-bar">
+          <div className="vw-bar__left">
             <TimecodeField time={time} fps={fps} onCommit={(t) => sp.seek(t)} testId="vw-source-timecode" />
+            <div className="vw-readouts">
+              <span className="vw-readout">
+                <span className="vw-readout__k">In</span>
+                <span className="tc" data-testid="vw-source-in">
+                  {markIn !== null ? tc(markIn) : '–'}
+                </span>
+              </span>
+              <span className="vw-readout">
+                <span className="vw-readout__k">Out</span>
+                <span className="tc" data-testid="vw-source-out">
+                  {markOut !== null ? tc(outFrame(markOut, fps)) : '–'}
+                </span>
+              </span>
+              <span className="vw-readout">
+                <span className="vw-readout__k">Dur</span>
+                <span className="tc" data-testid="vw-source-duration">
+                  {tc(rangeDur)}
+                </span>
+              </span>
+            </div>
           </div>
-          <div className="vw-row__center vw-btns">
+          <div className="vw-bar__right">
+            {asset && (
+              <span className="vw-meta" data-testid="vw-source-meta">
+                {[asset.width && asset.height ? `${asset.width}×${asset.height}` : '', asset.fps ? `${Math.round(asset.fps * 1000) / 1000} fps` : '', isAudio && asset.sampleRate ? `${asset.sampleRate / 1000} kHz` : '', isAudio && asset.channels ? `${asset.channels} ch` : '']
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="vw-row">
+          <div className="vw-row__left vw-btns">
             <button type="button" className={`icon-btn icon-btn--sm ${markIn !== null ? 'is-mark' : ''}`} disabled={!asset || isImage} data-testid="vw-source-mark-in" data-tip="Mark in" data-tip-keys="I" onClick={() => onSource(() => cmd.markSource('in'))}>
               <VI.MarkIn size={16} />
             </button>
@@ -206,7 +221,8 @@ function Source() {
             <button type="button" className="icon-btn icon-btn--sm vw-opt" disabled={!asset || (markIn === null && markOut === null)} data-testid="vw-source-clear" data-tip="Clear in and out" data-tip-keys="Mod+Shift+X" onClick={() => onSource(() => cmd.clearSource('both'))}>
               <VI.ClearInOut size={16} />
             </button>
-            <span className="vw-sep" />
+          </div>
+          <div className="vw-row__center vw-btns">
             <button type="button" className="icon-btn icon-btn--sm vw-opt" disabled={!asset || isImage} data-testid="vw-source-goto-in" data-tip="Go to in" data-tip-keys="Shift+I" onClick={() => onSource(cmd.goToIn)}>
               <VI.GoIn size={16} />
             </button>
@@ -214,7 +230,7 @@ function Source() {
               <I.StepBack size={16} />
             </button>
             <button type="button" className="icon-btn icon-btn--primary vw-play" disabled={!asset || isImage} data-testid="vw-source-play" aria-label={playing ? 'Pause' : 'Play'} data-tip="Play / pause" data-tip-keys="Space" onClick={() => onSource(() => sp.toggle())}>
-              {playing ? <I.Pause size={16} /> : <I.Play size={16} />}
+              {playing ? <I.Pause size={15} /> : <I.Play size={15} />}
             </button>
             <button type="button" className="icon-btn icon-btn--sm" disabled={!asset || isImage} data-testid="vw-source-step-forward" data-tip="Step forward" data-tip-keys="ArrowRight" onClick={() => sp.step(1)}>
               <I.StepForward size={16} />
@@ -222,33 +238,18 @@ function Source() {
             <button type="button" className="icon-btn icon-btn--sm vw-opt" disabled={!asset || isImage} data-testid="vw-source-goto-out" data-tip="Go to out" data-tip-keys="Shift+O" onClick={() => onSource(cmd.goToOut)}>
               <VI.GoOut size={16} />
             </button>
-            <span className="vw-sep" />
-            <button type="button" className="icon-btn icon-btn--sm" disabled={!asset} data-testid="vw-source-insert" data-tip="Insert into the sequence" data-tip-keys="," onClick={() => cmd.editFromSource('insert')}>
+          </div>
+          <div className="vw-row__right vw-btns">
+            <button type="button" className="icon-btn icon-btn--sm" disabled={!asset} data-testid="vw-source-insert" data-tip="Insert" data-tip-keys="," onClick={() => cmd.editFromSource('insert')}>
               <VI.Insert size={16} />
             </button>
-            <button type="button" className="icon-btn icon-btn--sm" disabled={!asset} data-testid="vw-source-overwrite" data-tip="Overwrite into the sequence" data-tip-keys="." onClick={() => cmd.editFromSource('overwrite')}>
+            <button type="button" className="icon-btn icon-btn--sm" disabled={!asset} data-testid="vw-source-overwrite" data-tip="Overwrite" data-tip-keys="." onClick={() => cmd.editFromSource('overwrite')}>
               <VI.Overwrite size={16} />
             </button>
           </div>
-          <div className="vw-row__right">
-            <div className="vw-readouts">
-              <span className="vw-readout">
-                <span className="vw-readout__k">In</span>
-                <span className="tc" data-testid="vw-source-in">{markIn !== null ? tc(markIn) : '–'}</span>
-              </span>
-              <span className="vw-readout">
-                <span className="vw-readout__k">Out</span>
-                <span className="tc" data-testid="vw-source-out">{markOut !== null ? tc(outFrame(markOut, fps)) : '–'}</span>
-              </span>
-              <span className="vw-readout">
-                <span className="vw-readout__k">Dur</span>
-                <span className="tc" data-testid="vw-source-duration">{tc(rangeDur)}</span>
-              </span>
-            </div>
-          </div>
         </div>
       </footer>
-    </section>
+    </div>
   );
 }
 

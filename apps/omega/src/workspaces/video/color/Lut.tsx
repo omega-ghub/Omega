@@ -1,6 +1,7 @@
 // Project LUTs: import .cube files, choose one for the clip, set its
 // intensity (keyframeable), remove LUTs from the project.
 import { useEffect, useState } from 'react';
+import { lutError, onLutLoaded } from '../../../engine/color/lut';
 import { paramAt } from '../../../engine/keyframes';
 import { useEditor } from '../../../state/store';
 import type { Clip } from '../../../state/types';
@@ -14,6 +15,8 @@ const fileName = (p: string) => p.replace(/^.*[\\/]/, '');
 export function LutSection({ clip, local }: { clip: Clip; local: number }) {
   const luts = useEditor((s) => s.project?.luts ?? []);
   const [missing, setMissing] = useState<Record<string, boolean>>({});
+  const [, setLoadTick] = useState(0);
+  useEffect(() => onLutLoaded(() => setLoadTick((n) => n + 1)), []);
   useEffect(() => {
     let alive = true;
     void (async () => {
@@ -53,7 +56,9 @@ export function LutSection({ clip, local }: { clip: Clip; local: number }) {
             <button type="button" role="radio" aria-checked={current === l.id} className="cl-lut__pick" data-testid="cl-lut-select" onClick={() => current !== l.id && setClipLut(clip.id, l.id)} title={l.path}>
               <span className="cl-lut__radio" />
               <span className="cl-lut__name">{l.name}</span>
-              <span className="cl-lut__file">{missing[l.id] ? 'File missing' : fileName(l.path)}</span>
+              <span className={`cl-lut__file ${missing[l.id] || lutError(l.id) ? 'cl-lut__file--bad' : ''}`} title={lutError(l.id) ?? l.path}>
+                {missing[l.id] ? 'File missing' : lutError(l.id) ? 'Could not load' : fileName(l.path)}
+              </span>
             </button>
             <button type="button" className="cl-icon-btn" title={`Remove “${l.name}” from the project`} aria-label={`Remove ${l.name}`} data-testid={`cl-lut-remove-${l.id}`} onClick={() => removeLut(l.id)}>
               <CI.Trash size={13} />

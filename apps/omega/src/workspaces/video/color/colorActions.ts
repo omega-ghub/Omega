@@ -5,7 +5,7 @@ import { newId } from '../../../state/types';
 import type { LutRef } from '../../../state/types';
 import { formatTimecode } from '../../../engine/time';
 import { paramAt } from '../../../engine/keyframes';
-import { loadLut, parseCube, setLoadedLut, unloadLut, type ParsedLut } from '../../../engine/color/lut';
+import { loadLut, parseCube, setLoadedLut, type ParsedLut } from '../../../engine/color/lut';
 import { onFrameRendered } from '../../../engine/playback/viewerBus';
 import { estimateIlluminant, solveMatch, solveWhiteBalance } from '../../../engine/scopes/analysis';
 import { readProgramFrame, READBACK_WIDTH } from '../../../engine/scopes/feed';
@@ -282,6 +282,4 @@ export function removeLut(lutId: string) {
     d.luts = d.luts.filter((l) => l.id !== lutId);
     for (const seq of d.sequences) for (const tr of seq.tracks) for (const c of tr.clips) if (c.grade.lut.id === lutId) c.grade.lut.id = null;
   });
-  // keep it loaded while undo can bring it back; it is reloaded on demand anyway
-  void unloadLut;
 }

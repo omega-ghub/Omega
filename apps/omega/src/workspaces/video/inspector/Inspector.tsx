@@ -9,7 +9,6 @@ import { LABEL_COLORS } from '../../../state/defaults';
 import { assetOf, type Clip, type Track } from '../../../state/types';
 import { AudioClipSection } from '../audio';
 import { EffectStack } from '../effects';
-import { Section } from './controls';
 import { II } from './icons';
 import { KeyframeLane } from './KeyframeLane';
 import { resolveSelection } from './selection';
@@ -84,18 +83,14 @@ function SingleClip({ clip, track, audio }: { clip: Clip; track: Track; audio: {
         {isVideo && <FadesSection clip={clip} />}
         <TransitionsSection clip={clip} track={track} />
         {isVideo && (
-          <Section id="effects" title="Effects" badge={clip.effects.length || undefined} data-testid="ins-sec-effects">
-            <div className="ins-ext">
-              <EffectStack clipId={clip.id} />
-            </div>
-          </Section>
+          <div className="ins-ext-sections" data-testid="ins-sec-effects">
+            <EffectStack clipId={clip.id} />
+          </div>
         )}
         {audio && (
-          <Section id="audio" title={audio.clip.id === clip.id ? 'Audio' : 'Audio · linked'} data-testid="ins-sec-audio">
-            <div className="ins-ext">
-              <AudioClipSection clipId={audio.clip.id} />
-            </div>
-          </Section>
+          <div className="ins-ext-sections" data-testid="ins-sec-audio">
+            <AudioClipSection clipId={audio.clip.id} />
+          </div>
         )}
         {isVideo && <ColorQuickSection clip={clip} />}
       </div>

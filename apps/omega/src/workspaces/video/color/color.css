@@ -842,6 +842,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.cl-lut__file--bad {
+  color: var(--warn) !important;
+}
 .cl-lut__file {
   margin-left: auto;
   font-family: var(--mono);

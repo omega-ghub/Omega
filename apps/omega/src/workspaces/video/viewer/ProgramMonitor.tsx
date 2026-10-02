@@ -121,7 +121,7 @@ function Program() {
   const { playing, error, stats } = useProgramState();
   const time = useProgramTime();
 
-  const rootRef = useRef<HTMLElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
