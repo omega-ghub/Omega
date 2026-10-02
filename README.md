@@ -24,3 +24,26 @@ Adobe sells a bundle of separate apps that were bought and stitched together ove
 Omega is **one application** with workspaces for image, video, audio and 3D. They share
 a single document model, render engine, color pipeline, asset library and scripting API,
 so there is nothing to round-trip and nothing to export between apps.
+
+## Run it (desktop app)
+
+The app lives in [`apps/omega`](apps/omega). It is an Electron + React + TypeScript
+desktop application (Windows, macOS, Linux).
+
+```bash
+cd apps/omega
+npm install
+npm run dev          # development with hot reload
+npm start            # production build, then launch
+npm run dist:win     # installer (also dist:mac, dist:linux)
+npm run smoke        # end-to-end UI test (see scripts/smoke.mjs)
+```
+
+What works today (preview): the Creator-Cloud-style dashboard, the new-project flow
+(destination → preset → name/location, advanced settings tucked away), and the
+**Omega Video** workspace: import media, multi-track timeline (move, trim, split,
+snap, lock/mute, linked A/V), real-time preview, Premiere-compatible shortcuts, undo/redo,
+autosave, and export to MP4/WebM with platform presets. Audio, Image, 3D and Motion
+show roadmap previews.
+
+Research behind the product decisions is in [`docs/research/`](docs/research/).
