@@ -13,5 +13,7 @@ export default defineConfig({
     outDir: path.resolve(__dirname, 'dist-modules/video'),
     emptyOutDir: true,
     target: 'chrome140',
+    // Fonts/images ship as files: the CSP forbids data: URIs.
+    assetsInlineLimit: 0,
   },
 });

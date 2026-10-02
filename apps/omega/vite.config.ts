@@ -8,6 +8,8 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     target: 'chrome140',
+    // Fonts/images ship as files: the CSP forbids data: URIs.
+    assetsInlineLimit: 0,
   },
   server: {
     port: 5173,

@@ -275,7 +275,7 @@ export function TextAnimationSection({ clip }: { clip: Clip }) {
   };
   return (
     <Section id="textAnimation" title="Text animation" data-testid="ins-sec-textanim" badge={a.in !== 'none' || a.out !== 'none' ? '•' : undefined}>
-      <ParamRow label="In">
+      <ParamRow label="In" reserveKeyframe={false}>
         <Select value={a.in} options={IN_ANIMATIONS} aria-label="In animation" data-testid="ins-text-anim-in" onChange={(v) => setText(clip, 'animation.in', 'Text animation in', (x) => void (x.animation.in = v))} />
         <ScrubNumber
           value={a.inDuration}
@@ -285,7 +285,7 @@ export function TextAnimationSection({ clip }: { clip: Clip }) {
           precision={2}
           unit="s"
           defaultValue={0.5}
-          width={64}
+          width={58}
           disabled={a.in === 'none'}
           aria-label="In duration"
           data-testid="ins-text-anim-in-dur"
@@ -295,7 +295,7 @@ export function TextAnimationSection({ clip }: { clip: Clip }) {
           <II.TriRight size={12} />
         </IconButton>
       </ParamRow>
-      <ParamRow label="Out">
+      <ParamRow label="Out" reserveKeyframe={false}>
         <Select value={a.out} options={OUT_ANIMATIONS} aria-label="Out animation" data-testid="ins-text-anim-out" onChange={(v) => setText(clip, 'animation.out', 'Text animation out', (x) => void (x.animation.out = v))} />
         <ScrubNumber
           value={a.outDuration}
@@ -305,7 +305,7 @@ export function TextAnimationSection({ clip }: { clip: Clip }) {
           precision={2}
           unit="s"
           defaultValue={0.5}
-          width={64}
+          width={58}
           disabled={a.out === 'none'}
           aria-label="Out duration"
           data-testid="ins-text-anim-out-dur"

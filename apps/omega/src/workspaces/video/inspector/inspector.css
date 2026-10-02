@@ -3,7 +3,9 @@
 .ins {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   height: 100%;
+  overflow: hidden;
   min-height: 0;
   min-width: 0;
   background: var(--surface);
@@ -812,6 +814,7 @@
 .ins-titles {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   height: 100%;
   min-height: 0;
   background: var(--surface);
