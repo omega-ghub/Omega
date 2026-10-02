@@ -3,7 +3,10 @@
   "productName": "Omega",
   "version": "0.1.0",
   "description": "Omega — the all-in-one creative suite for video, audio, image and 3D",
-  "author": "Omega",
+  "author": {
+    "name": "Omega",
+    "email": "hello@omega.invalid"
+  },
   "license": "UNLICENSED",
   "private": true,
   "type": "module",
@@ -51,15 +54,10 @@
     ],
     "win": {
       "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
+        "nsis"
       ],
       "icon": "resources/icon.png",
-      "signAndEditExecutable": false
+      "signAndEditExecutable": true
     },
     "nsis": {
       "oneClick": false,
@@ -70,8 +68,7 @@
     },
     "mac": {
       "target": [
-        "dmg",
-        "zip"
+        "dmg"
       ],
       "category": "public.app-category.video",
       "icon": "resources/icon.png"
@@ -84,5 +81,7 @@
       "category": "AudioVideo",
       "icon": "resources/icon.png"
     }
-  }
+  },
+  "repository": "https://github.com/omega-ghub/Omega",
+  "homepage": "https://github.com/omega-ghub/Omega"
 }
