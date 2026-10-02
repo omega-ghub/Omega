@@ -31,6 +31,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.28.1",
     "playwright-core": "^1.59.1",
     "typescript": "^6.0.3",
@@ -50,15 +51,22 @@
     ],
     "win": {
       "target": [
-        "nsis",
-        "portable"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
-      "icon": "resources/icon.png"
+      "icon": "resources/icon.png",
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "perMachine": false
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "artifactName": "Omega-Setup-${version}.${ext}"
     },
     "mac": {
       "target": [
