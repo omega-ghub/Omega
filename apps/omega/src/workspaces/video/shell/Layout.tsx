@@ -48,8 +48,10 @@ const LABEL: Record<PanelId, string> = {
   deliver: 'Deliver',
 };
 
-/** Panels whose package already draws a title row; the shell adds no header. */
-const SELF_HEADED = new Set<PanelId>(['source', 'program', 'media', 'timeline', 'scopes', 'color', 'captions', 'deliver']);
+/** The timeline draws its own sequence tabs; it never gets a shell header.
+ *  Other single panels hide the shell header when they render their own
+ *  (see [data-autohead] in shell.css). */
+const SELF_HEADED = new Set<PanelId>(['timeline']);
 
 type Column = { tabs: PanelId[] } | { stack: [PanelId, PanelId] };
 
@@ -131,7 +133,7 @@ function useSubtitle(id: PanelId): string | undefined {
 function SinglePanel({ id }: { id: PanelId }) {
   const subtitle = useSubtitle(id);
   return (
-    <Panel id={id} title={LABEL[id]} subtitle={subtitle} chromeless={SELF_HEADED.has(id)}>
+    <Panel id={id} title={LABEL[id]} subtitle={subtitle} chromeless={SELF_HEADED.has(id) ? true : 'auto'}>
       {content(id)}
     </Panel>
   );

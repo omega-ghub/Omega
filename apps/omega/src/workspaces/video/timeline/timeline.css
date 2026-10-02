@@ -887,6 +887,7 @@ select.tl-input {
 }
 .tl-check {
   display: inline-flex;
+  white-space: nowrap;
   align-items: center;
   gap: 8px;
   color: var(--text-2);

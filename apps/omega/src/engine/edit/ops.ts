@@ -24,6 +24,7 @@
 //    respected) and shift keyframes so animation stays with the picture.
 //    Trims never reveal media beyond the source (asset.duration; stills and
 //    generated clips are unlimited) and never go below one frame.
+//  * Sequence markers and In/Out stay where they are on ripples.
 //  * After every op: head transitions whose neighbour went away are removed,
 //    transition and fade lengths are clamped to the clips, link/group ids
 //    that pair nothing are dropped and tracks are kept sorted.
@@ -99,6 +100,8 @@ export interface LinkOptions {
 export { sourceLimit } from './internal';
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+/** A finite number or the fallback (guards UI input such as NaN). */
+const fin = (v: number | undefined | null, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 
 function stillDuration(project: Project): number {
   const d = project.settings?.stillDuration;
@@ -221,7 +224,7 @@ export function placeMedia(project: Project, seq: Sequence, assetId: string, opt
 
     const vTrack = wantVideo ? pickTrack(seq, 'video', opts.videoTrackId) : null;
     const aTrack = wantAudio ? pickTrack(seq, 'audio', opts.audioTrackId) : null;
-    const s = Math.max(0, g.F(opts.start));
+    const s = Math.max(0, g.F(fin(opts.start, 0)));
     if ((opts.mode ?? 'overwrite') === 'insert') insertSpace(g, project, unlockedTracks(seq), s, frames, { split: true });
     else for (const tr of [vTrack, aTrack]) if (tr) clearRange(g, project, tr, s, s + frames);
 
@@ -260,8 +263,8 @@ export function addGeneratedClip(
 ): string {
   return runEdit([seq], () => {
     const g = gridOf(seq);
-    const s = Math.max(0, g.F(opts.start));
-    const dur = Math.max(1, g.F(opts.duration ?? opts.init?.duration ?? stillDuration(project)));
+    const s = Math.max(0, g.F(fin(opts.start, 0)));
+    const dur = Math.max(1, g.F(fin(opts.duration ?? opts.init?.duration, stillDuration(project))));
     const e = s + dur;
     let track: Track | null = null;
     if (opts.trackId) {
@@ -1049,7 +1052,7 @@ export function freezeFrame(project: Project, seq: Sequence, clipId: string, tim
     const e = endF(g, c);
     const t = clamp(Number.isFinite(time) ? g.F(time) : s, s, e - 1);
     const src = sourceTimeAt(c, g.T(t - s));
-    const d = Math.max(1, g.F(duration));
+    const d = Math.max(1, g.F(fin(duration, 2)));
     const hold = cloneClip(c);
     insertSpace(g, project, unlockedTracks(seq), t, d, { split: true });
     hold.id = newId('clip');
@@ -1277,7 +1280,7 @@ export function pasteClips(seq: Sequence, clips: { clip: Clip; trackIndex: numbe
     const entries = (clips ?? []).filter((e) => e && e.clip && (e.trackKind === 'video' || e.trackKind === 'audio'));
     if (!entries.length) return [];
     const base = Math.min(...entries.map((e) => g.F(e.clip.start)));
-    const P = Math.max(0, g.F(time));
+    const P = Math.max(0, g.F(fin(time, 0)));
     const dest = new Map<string, Track>();
     for (const kind of ['video', 'audio'] as const) {
       const es = entries.filter((e) => e.trackKind === kind);
@@ -1447,7 +1450,7 @@ function sortMarkers(seq: Sequence): void {
 export function addMarker(seq: Sequence, time: number, init: Partial<Marker> = {}): string {
   const g = gridOf(seq);
   const m = makeMarker(0, init);
-  m.time = g.T(Math.max(0, g.F(init.time ?? time)));
+  m.time = g.T(Math.max(0, g.F(fin(init.time ?? time, 0))));
   m.duration = init.duration && init.duration > 0 ? g.T(g.F(init.duration)) : 0;
   seq.markers.push(m);
   sortMarkers(seq);

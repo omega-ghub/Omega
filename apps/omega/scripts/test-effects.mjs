@@ -443,6 +443,7 @@ void main() { outColor = transition(v_uv); }`;
       types.add(def.type);
       if (filter && !def.type.toLowerCase().includes(filter.toLowerCase())) continue;
       const entry = { type: def.type, passes: 0, variants: 0 };
+      const tStart = performance.now();
       report.effects.push(entry);
       // param sanity
       const keys = new Set();
@@ -512,6 +513,7 @@ void main() { outColor = transition(v_uv); }`;
         const st = stats(px);
         if (st.nan) fail(`${def.type}: NaN/Inf with ${JSON.stringify(r.params)}`);
       }
+      entry.total = Math.round(performance.now() - tStart);
     }
 
     const ttypes = new Set();
@@ -519,7 +521,9 @@ void main() { outColor = transition(v_uv); }`;
       if (ttypes.has(def.type)) fail(`duplicate transition type ${def.type}`);
       ttypes.add(def.type);
       if (filter && !def.type.toLowerCase().includes(filter.toLowerCase())) continue;
-      report.transitions.push({ type: def.type });
+      const tentry = { type: def.type };
+      report.transitions.push(tentry);
+      const tStart = performance.now();
       const c = compile(transitionSource(def));
       report.programs++;
       if (c.error) {
@@ -562,6 +566,7 @@ void main() { outColor = transition(v_uv); }`;
         const st = stats(readback(runTransition(def, base, prog, texBlank, texC)));
         if (st.nan) fail(`transition ${def.type}: NaN from a transparent input at p=${prog}`);
       }
+      tentry.total = Math.round(performance.now() - tStart);
     }
     return report;
   };
@@ -591,8 +596,8 @@ try {
   const secs = ((Date.now() - t0) / 1000).toFixed(1);
 
   if (verbose) {
-    for (const e of report.effects) console.log(`  effect ${e.type.padEnd(22)} passes ${String(e.passes).padStart(2)}  variants ${String(e.variants).padStart(3)}  ${e.ms ?? '-'} ms`);
-    for (const t of report.transitions) console.log(`  transition ${t.type}`);
+    for (const e of report.effects) console.log(`  effect ${e.type.padEnd(22)} passes ${String(e.passes).padStart(2)}  variants ${String(e.variants).padStart(3)}  render ${e.ms ?? '-'} ms  total ${e.total ?? '-'} ms`);
+    for (const t of report.transitions) console.log(`  transition ${t.type.padEnd(18)} total ${t.total ?? '-'} ms`);
   }
   for (const n of report.notes) console.log(`note: ${n}`);
   for (const e of pageErrors) report.failures.push(`page error: ${e}`);
@@ -606,34 +611,38 @@ try {
   }
 
   if (sheetPath && report.sheet.length) {
-    const sheetFile = resolve(sheetPath);
-    const dataUrl = await page.evaluate((tiles) => {
-      const cols = 8;
-      const tw = 192;
-      const th = 108 + 16;
-      const c = document.createElement('canvas');
-      c.width = cols * tw;
-      c.height = Math.ceil(tiles.length / cols) * th;
-      const x = c.getContext('2d');
-      x.fillStyle = '#111';
-      x.fillRect(0, 0, c.width, c.height);
-      tiles.forEach((t, i) => {
-        const id = new ImageData(new Uint8ClampedArray(t.rgba), t.w, t.h);
-        const ox = (i % cols) * tw;
-        const oy = Math.floor(i / cols) * th;
-        const tmp = document.createElement('canvas');
-        tmp.width = t.w;
-        tmp.height = t.h;
-        tmp.getContext('2d').putImageData(id, 0, 0);
-        x.drawImage(tmp, ox, oy + 16, 192, 108);
-        x.fillStyle = '#ddd';
-        x.font = '11px sans-serif';
-        x.fillText(t.label, ox + 4, oy + 12);
-      });
-      return c.toDataURL('image/png');
-    }, report.sheet);
-    writeFileSync(sheetFile, Buffer.from(dataUrl.split(',')[1], 'base64'));
-    console.log(`contact sheet: ${sheetFile}`);
+    // Contact sheet(s): 8 columns, at most 8 rows per image (out.png, out-2.png, ...).
+    const perPage = 64;
+    for (let page0 = 0; page0 * perPage < report.sheet.length; page0++) {
+      const tiles = report.sheet.slice(page0 * perPage, (page0 + 1) * perPage);
+      const file = resolve(page0 === 0 ? sheetPath : sheetPath.replace(/(\.png)?$/i, `-${page0 + 1}.png`));
+      const dataUrl = await page.evaluate((list) => {
+        const cols = 8;
+        const tw = 192;
+        const th = 108 + 16;
+        const c = document.createElement('canvas');
+        c.width = cols * tw;
+        c.height = Math.ceil(list.length / cols) * th;
+        const x = c.getContext('2d');
+        x.fillStyle = '#111';
+        x.fillRect(0, 0, c.width, c.height);
+        list.forEach((t, i) => {
+          const tmp = document.createElement('canvas');
+          tmp.width = t.w;
+          tmp.height = t.h;
+          tmp.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(t.rgba), t.w, t.h), 0, 0);
+          const ox = (i % cols) * tw;
+          const oy = Math.floor(i / cols) * th;
+          x.drawImage(tmp, ox, oy + 16, 192, 108);
+          x.fillStyle = '#ddd';
+          x.font = '11px sans-serif';
+          x.fillText(t.label, ox + 4, oy + 12);
+        });
+        return c.toDataURL('image/png');
+      }, tiles);
+      writeFileSync(file, Buffer.from(dataUrl.split(',')[1], 'base64'));
+      console.log(`contact sheet: ${file}`);
+    }
   }
 } finally {
   await browser.close();

@@ -8,7 +8,6 @@ import {
   apply,
   contentMatrix,
   croppedRect,
-  flipRect,
   intersectRect,
   invert,
   layerMatrix,
@@ -26,9 +25,9 @@ export interface LayerInfo {
   /** Layer pixel size (source size for media, frame size for generated layers). */
   sw: number;
   sh: number;
-  /** Layer space → sequence pixels (no flips). */
+  /** Layer (texture) space → sequence pixels, exactly as the renderer places the layer. */
   m: Affine;
-  /** Texture space (crop, masks) → sequence pixels. */
+  /** The same map, named for crop and mask drawing. */
   content: Affine;
   /** Visible content box in layer space (text block, shape, or the cropped picture). */
   box: Rect;
@@ -72,10 +71,11 @@ export function layerInfo(node: LayerNode, W: number, H: number): LayerInfo | nu
   const tf = node.transform;
   const m = layerMatrix(tf, sw, sh, W, H);
   const content = contentMatrix(tf, sw, sh, W, H);
+  // Generated layers are frame-sized rasters with the content at their center.
   let box: Rect = layerRect(sw, sh);
   if (src.kind === 'text') box = titleBox(src.text);
   else if (src.kind === 'shape') box = { x: -src.shape.width / 2, y: -src.shape.height / 2, w: src.shape.width, h: src.shape.height };
-  box = intersectRect(box, flipRect(croppedRect(sw, sh, node.crop), tf.flipH, tf.flipV));
+  box = intersectRect(box, croppedRect(sw, sh, node.crop));
   return { node, sw, sh, m, content, box };
 }
 

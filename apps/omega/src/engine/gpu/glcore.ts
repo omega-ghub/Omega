@@ -57,17 +57,19 @@ function compile(gl: GL, type: number, src: string): { shader: WebGLShader | nul
 
 /** Caches linked programs by their full source; failed sources are remembered (and logged once). */
 export class ProgramCache {
-  private progs = new Map<string, Program | null>();
+  private progs = new Map<string, Map<string, Program | null>>();
   private vsCache = new Map<string, WebGLShader>();
   readonly errors = new Map<string, string>();
 
   constructor(private gl: GL) {}
 
   get(vs: string, fs: string, label = 'shader'): Program | null {
-    const key = fs + '\u0000' + vs;
-    if (this.progs.has(key)) return this.progs.get(key)!;
+    let byFs = this.progs.get(vs);
+    if (!byFs) this.progs.set(vs, (byFs = new Map()));
+    const have = byFs.get(fs);
+    if (have !== undefined) return have;
     const p = this.build(vs, fs, label);
-    this.progs.set(key, p);
+    byFs.set(fs, p);
     return p;
   }
 
@@ -140,14 +142,16 @@ export class ProgramCache {
   }
 
   dispose() {
-    for (const p of this.progs.values()) if (p) this.gl.deleteProgram(p.prog);
+    for (const m of this.progs.values()) for (const p of m.values()) if (p) this.gl.deleteProgram(p.prog);
     for (const v of this.vsCache.values()) this.gl.deleteShader(v);
     this.progs.clear();
     this.vsCache.clear();
   }
 
   get size() {
-    return this.progs.size;
+    let n = 0;
+    for (const m of this.progs.values()) n += m.size;
+    return n;
   }
 }
 

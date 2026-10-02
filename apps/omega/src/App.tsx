@@ -35,7 +35,7 @@ export function App() {
       </div>
       {newProjectFor && <NewProjectDialog app={newProjectFor} />}
       {toast && (
-        <div className="toast toast--info" role="status" key={toast}>
+        <div className="toast" role="status" key={toast}>
           <I.Info size={15} className="toast__icon" />
           {toast}
         </div>

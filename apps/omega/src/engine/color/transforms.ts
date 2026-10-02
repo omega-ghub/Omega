@@ -523,3 +523,25 @@ vec3 tonemapRgb(vec3 c) {
   return mix(mapped, vec3(t), w * w * ${g(TONEMAP.pathToWhite)});
 }
 `;
+
+/**
+ * A specialized `vec3 decodeIn(vec3 c)` for one transfer code (compile-time
+ * selection: no per-pixel branching over curves). Requires GLSL_COLOR.
+ */
+export function glslDecodeFn(code: number): string {
+  const L = 'c = vec3(legalToFull(c.r), legalToFull(c.g), legalToFull(c.b));';
+  const per = (f: string) => `return vec3(${f}(c.r), ${f}(c.g), ${f}(c.b));`;
+  const body: Record<number, string> = {
+    0: 'return c;',
+    1: 'return bt709InvOetf3(c);',
+    2: 'return srgbDecode3(c);',
+    3: `${L} ${per('slog3Decode')}`,
+    4: `${L} ${per('logc3Decode')}`,
+    5: `${L} ${per('vlogDecode')}`,
+    6: per('clog3Decode'),
+    7: `${L} ${per('flogDecode')}`,
+    8: 'return hlgDecode3(c);',
+    9: per('pqDecode'),
+  };
+  return `vec3 decodeIn(vec3 c) { ${body[code] ?? 'return c;'} }`;
+}

@@ -70,8 +70,9 @@ export const VIEWER_ACTIONS: Action[] = [
   // ---- view ----
   { id: 'viewer.fullscreen', label: 'Full-screen program', group: V, keys: ['`'], run: cmd.toggleFullscreen, enabled: hasProject, hint: 'Escape exits' },
   { id: 'viewer.zoomFit', label: 'Viewer: fit', group: V, keys: ['Shift+Z'], run: cmd.zoomFit, enabled: hasProject },
-  { id: 'viewer.zoomIn', label: 'Viewer: zoom in', group: V, keys: ['+'], run: cmd.zoomIn, enabled: hasProject },
-  { id: 'viewer.zoomOut', label: 'Viewer: zoom out', group: V, keys: ['_'], run: cmd.zoomOut, enabled: hasProject },
+  // Shift+= / Shift+- zoom the viewer while the pointer is over it (handled by the monitor; the timeline owns them globally).
+  { id: 'viewer.zoomIn', label: 'Viewer: zoom in', group: V, run: cmd.zoomIn, enabled: hasProject },
+  { id: 'viewer.zoomOut', label: 'Viewer: zoom out', group: V, run: cmd.zoomOut, enabled: hasProject },
   { id: 'viewer.zoom100', label: 'Viewer: 100%', group: V, run: () => cmd.setZoom(1), enabled: hasProject },
   { id: 'viewer.safeAreas', label: 'Show safe areas', group: V, run: () => ed().setViewer({ safeAreas: !ed().viewer.safeAreas }) },
   { id: 'viewer.gridThirds', label: 'Grid: rule of thirds', group: V, run: () => ed().setViewer({ grid: ed().viewer.grid === 'thirds' ? 'off' : 'thirds' }) },

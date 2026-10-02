@@ -36,7 +36,8 @@ export function Panel({
   /** Header without the bottom hairline (panels that draw their own toolbar). */
   flushHead?: boolean;
   /** No shell header: the package's panel draws its own title row. */
-  chromeless?: boolean;
+  /** 'auto': hide the shell header when the package panel starts with its own header row. */
+  chromeless?: boolean | 'auto';
 }) {
   const focused = useShell((s) => s.focusedPanel === id);
   const maximized = useShell((s) => s.maximized === id);
@@ -48,13 +49,14 @@ export function Panel({
     <section
       className={`panel sh-panel ${focused ? "is-focused" : ""} ${maximized ? "is-maximized" : ""} ${className}`}
       data-panel={id}
+      data-autohead={chromeless === 'auto' ? '' : undefined}
       data-testid={`sh-panel-${id}`}
       onPointerDownCapture={() => setFocused(id)}
       onFocusCapture={() => setFocused(id)}
       onPointerEnter={() => setHovered(id)}
       onPointerLeave={() => setHovered(null)}
     >
-      {!chromeless && (
+      {chromeless !== true && (
       <header className={`panel__head sh-panel__head ${flushHead ? 'sh-panel__head--flush' : ''}`} onDoubleClick={(e) => e.target === e.currentTarget && setMaximized(maximized ? null : id)}>
         {tabs && tabs.length > 1 ? (
           <div className="tabs" role="tablist">

@@ -2,7 +2,14 @@
 // package (one look across Delta), plus a range slider and a compact
 // slider+number row built on it.
 import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { displayKey, keysFor } from '../actions';
 import { KeyframeButton, ParamRow, ScrubNumber, Select, Slider, Toggle, type ChangeMeta } from '../inspector/controls';
+
+/** " (Ctrl+Alt+C)" — the action's current binding for tooltips, or ''. */
+export function kbd(actionId: string): string {
+  const k = keysFor(actionId)[0];
+  return k ? ` (${displayKey(k)})` : '';
+}
 
 export { KeyframeButton, ParamRow, ScrubNumber, Select, Slider, Toggle };
 export type { ChangeMeta };

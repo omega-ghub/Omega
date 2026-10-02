@@ -53,7 +53,7 @@ interface LanePrefs {
 const PREF_KEY = 'delta.ins.lane';
 
 function loadPrefs(): LanePrefs {
-  const def: LanePrefs = { open: true, height: 168, view: 'lanes' };
+  const def: LanePrefs = { open: true, height: 150, view: 'lanes' };
   try {
     return { ...def, ...JSON.parse(localStorage.getItem(PREF_KEY) ?? '{}') };
   } catch {
@@ -841,8 +841,12 @@ export function KeyframeLane({ clip }: { clip: Clip }) {
   };
 
   return (
-    <div className={`ins-lane ${prefs.open ? '' : 'ins-lane--closed'}`} style={prefs.open ? { height: prefs.height } : undefined} data-testid="ins-lane">
-      {prefs.open && (
+    <div
+      className={`ins-lane ${prefs.open && paths.length ? '' : 'ins-lane--closed'}`}
+      style={prefs.open && paths.length ? { height: prefs.height } : undefined}
+      data-testid="ins-lane"
+    >
+      {prefs.open && paths.length > 0 && (
         <div
           className="ins-lane__resize"
           title="Drag to resize"
@@ -867,9 +871,9 @@ export function KeyframeLane({ clip }: { clip: Clip }) {
         <button type="button" className="ins-lane__toggle" aria-expanded={prefs.open} data-testid="ins-lane-toggle" onClick={() => update({ open: !prefs.open })}>
           <II.Chevron size={12} className="ins-section__chev" />
           <span>Keyframes</span>
-          {total > 0 && <span className="ins-section__badge">{total}</span>}
+          {total > 0 ? <span className="ins-section__badge">{total}</span> : <span className="ins-lane__none">None · use a stopwatch to animate</span>}
         </button>
-        {prefs.open && (
+        {prefs.open && paths.length > 0 && (
           <div className="ins-lane__tools">
             <IconButton title="Previous keyframe (Alt+[)" data-testid="ins-lane-prev" onClick={() => seekKeyframe(clip.id, -1)}>
               <II.TriLeft size={11} />
@@ -909,11 +913,9 @@ export function KeyframeLane({ clip }: { clip: Clip }) {
           </div>
         )}
       </div>
-      {prefs.open && (
+      {prefs.open && paths.length > 0 && (
         <div className="ins-lane__body" tabIndex={0} onKeyDown={onKeyDown} data-testid="ins-lane-body" aria-label="Keyframes">
-          {paths.length === 0 ? (
-            <p className="ins-lane__empty">No animated parameters. Click a stopwatch next to any value to start animating it.</p>
-          ) : prefs.view === 'graph' && activePath ? (
+          {prefs.view === 'graph' && activePath ? (
             <GraphView clip={clip} path={activePath} paths={paths} onPick={setGraphPath} sel={sel} onContext={onContext} />
           ) : (
             <LanesView clip={clip} paths={paths} sel={sel} onContext={onContext} />

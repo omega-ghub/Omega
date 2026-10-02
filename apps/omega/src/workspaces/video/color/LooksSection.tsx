@@ -1,32 +1,53 @@
 // Built-in looks: a card per look with a preview swatch (the look applied to
 // a small test scene by the CPU grade model). One click layers it over the
 // selected clips' grades as one undo step.
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { defaultGrade } from '../../../state/defaults';
 import { applyLook } from './colorActions';
 import { renderSwatch } from './gradeModel';
 import { composeLook, LOOKS, type LookDef } from './looks';
 
-const SW = 96;
-const SH = 54;
+const SW = 80;
+const SH = 45;
 const cache = new Map<string, Uint8ClampedArray>();
-
-function swatch(look: LookDef | null): Uint8ClampedArray {
-  const key = look?.id ?? '__original';
-  let d = cache.get(key);
-  if (!d) {
-    d = renderSwatch(look ? composeLook(defaultGrade(), look) : defaultGrade(), SW, SH);
-    cache.set(key, d);
+// Swatches are rendered one per tick (each is ~3600 pixels through the full
+// grade pipeline), so opening the tab never blocks the UI.
+const queue: (() => void)[] = [];
+let pumping = false;
+function pump() {
+  const job = queue.shift();
+  if (!job) {
+    pumping = false;
+    return;
   }
-  return d;
+  job();
+  setTimeout(pump, 0);
+}
+function enqueue(job: () => void) {
+  queue.push(job);
+  if (!pumping) {
+    pumping = true;
+    setTimeout(pump, 0);
+  }
 }
 
 function Swatch({ look }: { look: LookDef }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  useLayoutEffect(() => {
-    const c = ref.current;
-    if (!c) return;
-    c.getContext('2d')?.putImageData(new ImageData(swatch(look) as Uint8ClampedArray<ArrayBuffer>, SW, SH), 0, 0);
+  useEffect(() => {
+    let alive = true;
+    const paint = (d: Uint8ClampedArray) => ref.current?.getContext('2d')?.putImageData(new ImageData(d as Uint8ClampedArray<ArrayBuffer>, SW, SH), 0, 0);
+    const hit = cache.get(look.id);
+    if (hit) paint(hit);
+    else
+      enqueue(() => {
+        if (!alive) return;
+        const d = cache.get(look.id) ?? renderSwatch(composeLook(defaultGrade(), look), SW, SH);
+        cache.set(look.id, d);
+        paint(d);
+      });
+    return () => {
+      alive = false;
+    };
   }, [look]);
   return <canvas ref={ref} width={SW} height={SH} className="cl-look__swatch" aria-hidden="true" />;
 }

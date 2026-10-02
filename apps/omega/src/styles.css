@@ -38,6 +38,8 @@
   --accent-soft: rgba(255, 0, 0, 0.14);
   --accent-fg: #ffffff;
   --accent-line: color-mix(in srgb, var(--accent) 60%, transparent);
+  /* Small accent-coloured text: use color-mix(in srgb, var(--accent) 58%, white)
+     inline (a token here would freeze the root accent). */
   --brand: #ff0000;
 
   /* ---- status ---- */
@@ -129,6 +131,14 @@
 
   --ui-scale: 1;
   color-scheme: dark;
+}
+
+/* Tokens derived from --accent are recomputed wherever an element overrides
+   the accent inline (e.g. an app's own dialog inside the hub). */
+[style*='--accent'] {
+  --accent-line: color-mix(in srgb, var(--accent) 60%, transparent);
+  --focus: color-mix(in srgb, var(--accent) 75%, white 10%);
+  --focus-ring: 0 0 0 1px var(--bg), 0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 /* The hub keeps red for the brand only; its primary buttons are quiet. */
@@ -477,7 +487,7 @@ svg {
 .icon-btn.is-on,
 .icon-btn[aria-pressed='true'] {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: color-mix(in srgb, var(--accent) 58%, white);
 }
 .icon-btn--sm {
   --ib: var(--ctl-sm);
@@ -889,7 +899,7 @@ svg {
 .badge--accent,
 .pill--accent {
   background: var(--accent-soft);
-  color: var(--pill, var(--accent));
+  color: var(--pill, color-mix(in srgb, var(--accent) 58%, white));
 }
 .badge--ok {
   background: var(--ok-soft);
@@ -1045,7 +1055,7 @@ kbd + kbd,
   width: 15px;
   display: inline-grid;
   place-items: center;
-  color: var(--accent);
+  color: color-mix(in srgb, var(--accent) 58%, white);
 }
 .menu__shortcut {
   margin-left: 16px;
@@ -1108,6 +1118,11 @@ kbd + kbd,
     opacity: 0;
     transform: translateY(4px) scale(0.985);
   }
+}
+.modal:focus,
+.modal:focus-visible,
+.menu:focus-visible {
+  outline: none;
 }
 .dialog {
   overflow: hidden;
@@ -2294,8 +2309,9 @@ body.is-resizing-h * {
 }
 .app-row__name {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
+  margin-bottom: 3px;
 }
 .app-row__name .app-title {
   flex: 0 1 auto;
@@ -2416,6 +2432,7 @@ body.is-resizing-h * {
   font-variant-numeric: tabular-nums;
 }
 .plan__price span {
+  margin-left: 3px;
   font-size: var(--fs-sm);
   font-weight: 500;
   color: var(--text-3);
@@ -2635,7 +2652,7 @@ body.is-resizing-h * {
   border-radius: 4px;
   display: grid;
   place-items: center;
-  color: var(--accent);
+  color: color-mix(in srgb, var(--accent) 58%, white);
   font-weight: 600;
   font-size: var(--fs-xs);
 }

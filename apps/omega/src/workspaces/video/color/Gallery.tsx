@@ -1,6 +1,7 @@
 // Stills gallery strip: grab the program frame, click a still to show it as
 // the reference beside the scopes (and for Match), remove with ×.
 import { grabStill } from './colorActions';
+import { kbd } from './controls';
 import { CI } from './icons';
 import { StillCanvas } from './Scopes';
 import { clearStills, removeStill, setReference, useReference, useStills } from './stills';
@@ -20,7 +21,7 @@ export function Gallery() {
         )}
       </div>
       <div className="cl-gallery__strip">
-        <button type="button" className="cl-gallery__grab" title="Grab a still of the program frame" aria-label="Grab still" data-testid="cl-grab-still" onClick={() => void grabStill()}>
+        <button type="button" className="cl-gallery__grab" title={`Grab a still of the program frame${kbd('color.grabStill')}`} aria-label="Grab still" data-testid="cl-grab-still" onClick={() => void grabStill()}>
           <CI.Still size={16} />
         </button>
         {stills.map((s) => (

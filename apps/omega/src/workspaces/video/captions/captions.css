@@ -431,7 +431,7 @@ kbd.cap-kbd {
   top: calc(100% + 4px);
   right: 0;
   z-index: 30;
-  min-width: 200px;
+  min-width: 236px;
   padding: 4px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -460,6 +460,7 @@ kbd.cap-kbd {
   font: inherit;
   font-size: 12px;
   text-align: left;
+  white-space: nowrap;
   cursor: pointer;
 }
 .cap-menu__item:hover:not(:disabled) {

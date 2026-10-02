@@ -129,11 +129,40 @@ float blendF(int m, float b, float s) {
   return s;
 }
 vec3 blendRgb(int m, vec3 b, vec3 s) { return vec3(blendF(m, b.r, s.r), blendF(m, b.g, s.g), blendF(m, b.b, s.b)); }
-/** W3C source-over with a separable blend, premultiplied in and out. */
-vec4 compositeW3C(int m, vec4 S, vec4 D) {
+`;
+
+const BLEND_EXPR = [
+  's',
+  'b + s',
+  'max(b - s, 0.0)',
+  'b * s',
+  'screenF(b, s)',
+  'hardLightF(s, b)',
+  'softLightF(b, s)',
+  'hardLightF(b, s)',
+  'min(b, s)',
+  'max(b, s)',
+  'abs(b - s)',
+  'c01(b) + c01(s) - 2.0 * c01(b) * c01(s)',
+  'dodgeF(b, s)',
+  'burnF(b, s)',
+];
+
+/**
+ * GLSL for one blend mode, selected at compile time (no per-pixel branching
+ * over modes): `vec3 blendMode(vec3 cb, vec3 cs)` and
+ * `vec4 compositeW3C(vec4 S, vec4 D)` (premultiplied source-over). Requires GLSL_BLEND.
+ */
+export function glslBlendFns(mode: number): string {
+  const e = BLEND_EXPR[mode] ?? 's';
+  return /* glsl */ `
+float bf(float b, float s) { return ${e}; }
+vec3 blendMode(vec3 b, vec3 s) { return vec3(bf(b.r, s.r), bf(b.g, s.g), bf(b.b, s.b)); }
+vec4 compositeW3C(vec4 S, vec4 D) {
   vec3 cs = S.a > 1e-6 ? S.rgb / S.a : vec3(0.0);
   vec3 cb = D.a > 1e-6 ? D.rgb / D.a : vec3(0.0);
-  vec3 Co = S.rgb * (1.0 - D.a) + D.rgb * (1.0 - S.a) + S.a * D.a * blendRgb(m, cb, cs);
+  vec3 Co = S.rgb * (1.0 - D.a) + D.rgb * (1.0 - S.a) + S.a * D.a * blendMode(cb, cs);
   return vec4(Co, S.a + D.a * (1.0 - S.a));
 }
 `;
+}

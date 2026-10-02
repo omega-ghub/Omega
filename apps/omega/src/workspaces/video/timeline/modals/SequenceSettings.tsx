@@ -124,7 +124,7 @@ export function SequenceSettingsDialog({ onClose }: { onClose: () => void }) {
       </Row>
       <Row label="Frame rate" hint={Math.abs(fps - seq.fps) > 1e-9 ? 'Clips, markers and keyframes will snap to the new frame grid.' : undefined}>
         <span className="tl-inline">
-          <select className="tl-input" value={fps} onChange={(e) => setFps(Number(e.target.value))} data-testid="tl-seqset-fps">
+          <select className="tl-input" style={{ width: 150 }} value={fps} onChange={(e) => setFps(Number(e.target.value))} data-testid="tl-seqset-fps">
             {FPS_OPTIONS.map((f) => (
               <option key={f} value={f}>
                 {f} fps

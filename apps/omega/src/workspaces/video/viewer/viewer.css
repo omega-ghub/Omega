@@ -156,6 +156,9 @@
 }
 
 /* ---- direct manipulation ---- */
+.vw-gz.is-passive * {
+  pointer-events: none !important;
+}
 .vw-gz__box {
   fill: transparent;
   stroke: var(--accent);

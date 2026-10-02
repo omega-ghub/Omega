@@ -198,6 +198,14 @@ function Program() {
   // ---- space-drag panning (Space alone still plays / pauses) ----
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
+      // Shift+= / Shift+- zoom the picture while the pointer is over it (the timeline owns them elsewhere).
+      if ((e.key === '+' || e.key === '_') && hover.current && !isEditable(e.target) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.key === '+') cmd.zoomIn();
+        else cmd.zoomOut();
+        return;
+      }
       if (e.code !== 'Space' || !hover.current || useEditor.getState().viewer.zoom === 'fit' || isEditable(e.target) || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
       e.preventDefault();
       e.stopPropagation();
@@ -479,7 +487,7 @@ function Program() {
         >
           <canvas ref={canvasRef} className={`vw-canvas ${k * dpr > 1.01 ? 'is-pixelated' : ''}`} data-testid="vw-canvas" />
           <Guides W={W} H={H} k={k} />
-          {graph && !ui.textEdit && <Gizmo graph={graph} k={k} frame={frameRef} />}
+          {graph && !ui.textEdit && <Gizmo graph={graph} k={k} frame={frameRef} interactive={tool !== 'text' && tool !== 'hand'} />}
           {graph && ui.textEdit && <TextEditor key={ui.textEdit.clipId} edit={ui.textEdit} graph={graph} k={k} />}
         </div>
         {isEmpty && !error && (

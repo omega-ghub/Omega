@@ -110,6 +110,34 @@
   box-shadow: none;
   color: var(--text-3);
 }
+/* narrow windows (or a 110% interface): the search pill becomes an icon */
+.sh-root .titlebar {
+  container-type: inline-size;
+  container-name: sh-titlebar;
+}
+@container sh-titlebar (max-width: 1360px) {
+  .sh-search {
+    padding: 0;
+    width: 28px;
+    justify-content: center;
+    background: transparent;
+    box-shadow: none;
+  }
+  .sh-search > span,
+  .sh-search > .keys-inline {
+    display: none;
+  }
+}
+@container sh-titlebar (max-width: 1120px) {
+  .sh-ws > button {
+    padding: 0 9px;
+  }
+  .sh-save {
+    font-size: 0;
+    gap: 0;
+    padding: 0 4px;
+  }
+}
 
 /* ---------- docked layout ---------- */
 
@@ -179,6 +207,10 @@
 }
 .sh-panel__head {
   background: transparent;
+}
+/* a package panel that starts with its own title row replaces the shell header */
+.sh-panel[data-autohead]:has(> .sh-panel__body > * > :is(header, .panel__head, [class$='-head']):first-child) > .sh-panel__head {
+  display: none;
 }
 .sh-panel__subtitle {
   color: var(--text-3);
@@ -460,6 +492,8 @@
   white-space: nowrap;
 }
 .sh-palette__text {
+  flex: none;
+  max-width: 78%;
   color: var(--text);
   font-size: var(--fs-md);
   overflow: hidden;
@@ -467,10 +501,12 @@
 }
 .sh-palette__text mark {
   background: none;
-  color: var(--accent);
+  color: color-mix(in srgb, var(--accent) 58%, white);
   font-weight: 600;
 }
 .sh-palette__hint {
+  flex: 1;
+  min-width: 0;
   color: var(--text-3);
   font-size: var(--fs-sm);
   overflow: hidden;
@@ -618,7 +654,7 @@
   border-radius: 6px;
   background: var(--accent-soft);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
-  color: var(--accent);
+  color: color-mix(in srgb, var(--accent) 58%, white);
   font-size: var(--fs-xs);
   font-weight: 600;
   animation: sh-pulse 1.2s var(--ease) infinite;
@@ -951,7 +987,7 @@
   place-items: center;
   margin-bottom: 4px;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: color-mix(in srgb, var(--accent) 58%, white);
 }
 .sh-drop__title {
   font-size: 14px;
@@ -1001,7 +1037,7 @@
   display: grid;
   place-items: center;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: color-mix(in srgb, var(--accent) 58%, white);
 }
 .sh-tips__title {
   font-weight: 600;

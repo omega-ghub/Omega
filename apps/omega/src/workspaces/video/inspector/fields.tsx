@@ -178,9 +178,10 @@ export function TextInput(props: {
 }
 
 /** Multi-line text area that writes every keystroke (coalesced by the caller's key). */
-export function TextArea(props: { value: string; onChange: (v: string) => void; rows?: number; placeholder?: string; 'data-testid'?: string; 'aria-label'?: string }) {
+export function TextArea(props: { value: string; onChange: (v: string) => void; rows?: number; placeholder?: string; autoFocus?: boolean; 'data-testid'?: string; 'aria-label'?: string }) {
   return (
     <textarea
+      autoFocus={props.autoFocus}
       className="ins-textarea"
       value={props.value}
       rows={props.rows ?? 3}

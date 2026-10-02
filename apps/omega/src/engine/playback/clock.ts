@@ -29,6 +29,10 @@ export class MasterClock {
   private audio: (() => number) | null = null;
   private holding = false;
   private last = 0;
+  private audioWall = 0;
+  private audioFrom = 0;
+  /** Set when the audio clock disagreed with wall time and was dropped. */
+  rejectedAudio: string | null = null;
 
   constructor(private readonly now: () => number) {}
 
@@ -62,6 +66,8 @@ export class MasterClock {
 
   attachAudio(audioTime: () => number): void {
     this.audio = audioTime;
+    this.audioFrom = this.holding ? this.anchorTime : this.time();
+    this.audioWall = this.now();
     this.holding = false;
   }
 
@@ -85,8 +91,20 @@ export class MasterClock {
     else if (this.audio) {
       t = this.audio();
       if (!Number.isFinite(t)) t = this.last;
-      // never step backwards when the audio clock takes over (it may start a hair late)
-      if (this.rateValue > 0 && t < this.last && this.last - t < 0.25) t = this.last;
+      // A sound card clock and wall time agree to well under a second; when the
+      // audio clock runs ahead or stalls far behind, it is broken (no device,
+      // virtual output): keep going on wall time instead.
+      const wall = this.audioFrom + ((this.now() - this.audioWall) / 1000) * this.rateValue;
+      if (t > wall + 0.35 || t < wall - 1.5) {
+        this.rejectedAudio = `audio clock ${t.toFixed(3)}s vs wall ${wall.toFixed(3)}s`;
+        this.audio = null;
+        this.anchorTime = Math.max(this.last, Math.min(wall, this.last + 0.1));
+        this.anchorWall = this.now();
+        t = this.anchorTime;
+      } else if (this.rateValue > 0 && t < this.last && this.last - t < 0.25) {
+        // never step backwards when the audio clock takes over (it may start a hair late)
+        t = this.last;
+      }
     } else t = this.anchorTime + ((this.now() - this.anchorWall) / 1000) * this.rateValue;
     this.last = t;
     return t;

@@ -75,7 +75,7 @@ export const PRESET_COMMANDS: PresetCommand[] = [
   { name: 'Fullscreen viewer', ids: ['viewer.fullscreen', 'viewer.toggleFullscreen'], label: /full ?screen/i, fcp: ['Mod+Shift+F'], resolve: ['Mod+F'] },
 
   // project
-  { name: 'Export', ids: ['deliver.export', 'deliver.open', 'deliver.queue'], label: /^export( media)?(…)?$/i, fcp: ['Mod+E'] },
+  { name: 'Export', ids: ['deliver.quickExport', 'deliver.export'], label: /^export( media)?(…)?$/i, fcp: ['Mod+E'] },
   { name: 'Import media', ids: ['media.import'], label: /^import( media)?(…)?$/i },
 ];
 

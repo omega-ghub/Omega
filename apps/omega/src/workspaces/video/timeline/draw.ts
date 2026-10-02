@@ -421,8 +421,7 @@ export class TimelineRenderer {
       }
     }
 
-    const assets = new Map<string, MediaAsset>();
-    for (const a of s.project.assets) assets.set(a.id, a);
+    const assets = assetMap(s.project.assets);
 
     // lanes
     for (const row of layout.rows) {
@@ -637,11 +636,27 @@ export class TimelineRenderer {
     const tk = row.track.kind;
     const key = kindKey(c, tk);
     const pal = clipPalette(c.label, key);
-    // LOD: tiny clips are a solid sliver
+    const asset = c.assetId ? assets.get(c.assetId) : undefined;
+    const offline = c.kind === 'media' && (!asset || asset.offline);
+    const alpha = !c.enabled ? 0.4 : trackDim ? 0.55 : 1;
+    // LOD 0: a sliver
     if (w < 3) {
-      ctx.fillStyle = sel ? pal.bodySel : pal.band;
-      ctx.globalAlpha = c.enabled ? 1 : 0.4;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = offline ? '#7a2a2d' : sel ? pal.bodySel : pal.band;
       ctx.fillRect(x, y, Math.max(1, w), h);
+      ctx.globalAlpha = 1;
+      return;
+    }
+    // LOD 1: body, label band and edge only (no clipping, no text)
+    if (w < 16 || h < 14) {
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = offline ? '#4a1c1f' : sel ? pal.bodySel : pal.body;
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = offline ? '#e5484d' : pal.band;
+      ctx.fillRect(x, y, w, 2);
+      ctx.fillStyle = sel ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.4)';
+      ctx.fillRect(x + w - 1, y, 1, h);
+      if (sel) ctx.fillRect(x, y, 1, h);
       ctx.globalAlpha = 1;
       return;
     }
@@ -649,18 +664,17 @@ export class TimelineRenderer {
     const vx0 = Math.max(x, -4);
     const vx1 = Math.min(x + w, W + 4);
     const vw = vx1 - vx0;
-    const asset = c.assetId ? assets.get(c.assetId) : undefined;
-    const offline = c.kind === 'media' && (!asset || asset.offline);
     const nestedMissing = c.kind === 'sequence' && !s.project.sequences.some((q) => q.id === c.sequenceId);
 
     ctx.save();
-    ctx.globalAlpha = !c.enabled ? 0.4 : trackDim ? 0.55 : 1;
-    roundRect(ctx, vx0, y, vw, h, 2);
-    ctx.clip();
-
-    // body
+    ctx.globalAlpha = alpha;
+    // body (2px corners), then an axis-aligned clip for the content (cheap in software raster)
     ctx.fillStyle = sel ? pal.bodySel : pal.body;
-    ctx.fillRect(vx0, y, vw, h);
+    roundRect(ctx, vx0, y, vw, h, 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.rect(vx0, y, vw, h);
+    ctx.clip();
 
     if (offline || nestedMissing) {
       const p = hatch(ctx, 'rgba(229,72,77,0.55)', '#2a1214', 7, 1.4);
@@ -735,7 +749,7 @@ export class TimelineRenderer {
     if (showsBand(c, tk, sel, s.tool, h) && w > 8) this.drawBand(ctx, s, c, tk, x, y, w, h, vx0, vx1);
 
     // name + badges
-    if (w >= 22 && h >= 14) this.drawLabel(ctx, s, c, tk, x, y, w, h, vx0, vx1, offline || nestedMissing, asset);
+    if (w >= 22 && h >= 14) this.drawLabel(ctx, s, c, tk, x, w, y, vx0, vx1, offline || nestedMissing);
 
     // keyframe lane on the selected clip
     if (showsKeyLane(c, sel, h, w)) this.drawKeyLane(ctx, s, c, x, y, w, h, vx0, vx1);
@@ -761,9 +775,8 @@ export class TimelineRenderer {
       roundRect(ctx, vx0 + 0.5, y + 0.5, vw - 1, h - 1, 2);
       ctx.stroke();
     } else {
-      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x + w - 0.5, y, 0, h);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(x + w - 1, y, 1, h);
     }
     if (s.overlay.dropClipId === c.id) {
       ctx.strokeStyle = theme.accent;
@@ -889,7 +902,7 @@ export class TimelineRenderer {
     }
   }
 
-  private drawLabel(ctx: CanvasRenderingContext2D, s: DrawState, c: Clip, tk: string, x: number, y: number, w: number, h: number, vx0: number, vx1: number, offline: boolean, asset?: MediaAsset) {
+  private drawLabel(ctx: CanvasRenderingContext2D, s: DrawState, c: Clip, tk: string, x: number, w: number, y: number, vx0: number, vx1: number, offline: boolean) {
     const { theme } = s;
     // the name sticks to the left edge when the clip starts off-screen
     let nx = Math.max(x, vx0, 0) + 5;
@@ -972,12 +985,6 @@ export class TimelineRenderer {
     ctx.fillStyle = offline ? '#ffb4b6' : theme.text;
     ctx.fillText(name, nx, ny + 0.5);
     ctx.restore();
-    // source timecode under the name when zoomed in and tall enough
-    if (h >= 48 && w > 140 && c.kind === 'media' && tk === 'audio' && asset) {
-      ctx.font = `400 9px ${theme.mono}`;
-      ctx.fillStyle = 'rgba(255,255,255,0.45)';
-      ctx.fillText(`${asset.channels ?? 2}ch`, nx, ny + 15);
-    }
   }
 
   private drawKindGlyph(ctx: CanvasRenderingContext2D, c: Clip, x: number, y: number): number {
@@ -1303,6 +1310,16 @@ export class TimelineRenderer {
       ctx.fill();
     }
   }
+}
+
+const assetMaps = new WeakMap<MediaAsset[], Map<string, MediaAsset>>();
+function assetMap(list: MediaAsset[]): Map<string, MediaAsset> {
+  let m = assetMaps.get(list);
+  if (!m) {
+    m = new Map(list.map((a) => [a.id, a]));
+    assetMaps.set(list, m);
+  }
+  return m;
 }
 
 function mixCss(a: string, b: string, t: number): string {

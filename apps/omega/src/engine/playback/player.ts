@@ -96,6 +96,7 @@ export class ProgramPlayer implements TransportImpl {
   private lastSeekAt = 0;
   private renderFailures = 0;
   private lastStatsEmit = 0;
+  private warnedAudioClock = false;
   private readonly timeListeners = new Set<Listener>();
   private readonly stateListeners = new Set<Listener>();
 
@@ -468,6 +469,10 @@ export class ProgramPlayer implements TransportImpl {
     const loop = !this.once && s.viewer.loop;
     const range = this.range(seq, duration);
     let t = this.clock.time();
+    if (this.clock.rejectedAudio && !this.warnedAudioClock) {
+      this.warnedAudioClock = true;
+      console.warn(`[viewer] the audio clock disagrees with wall time (${this.clock.rejectedAudio}); video follows wall time`);
+    }
     const res = applyRange(t, this.rate, range, loop, seq.fps);
     if (res.event === 'ended') {
       this.finish(seq, range);

@@ -590,3 +590,23 @@ test('chapters: fix-ups with warnings', () => {
   assert.equal(none.text, '');
   assert.equal(none.warnings.length, 1);
 });
+
+test('EDL A3/A4 use NONE + AUD; FCPXML puts audio-only media on negative lanes', () => {
+  const { project: p, seq } = fixture2398();
+  const a3 = makeTrack('audio', 'A3x');
+  a3.clips.push(makeClip('media', { name: 'score.wav', assetId: music.id, start: 0, duration: fromFrames(48, 23.976) }));
+  seq.tracks.splice(5, 1, a3);
+  const edl = exportEdl(p, seq);
+  const lines = edl.split('\n');
+  const i = lines.findIndex((l) => /^\d{3}  SCORE    NONE  C /.test(l));
+  assert.ok(i > 0, edl);
+  assert.equal(lines[i + 1], 'AUD  3');
+  const root = parseXml(exportFcpxml(p, seq));
+  const scoreAsset = findAll(root, 'asset').find((a) => a.attrs.name === 'score.wav')!;
+  assert.equal(scoreAsset.attrs.hasVideo, '0');
+  assert.equal(scoreAsset.attrs.format, undefined);
+  assert.equal(scoreAsset.attrs.duration, '120s');
+  const clip = findAll(root, 'asset-clip').find((c) => c.attrs.ref === scoreAsset.attrs.id)!;
+  assert.equal(clip.attrs.lane, '-3');
+  assert.equal(clip.attrs.srcEnable, undefined);
+});

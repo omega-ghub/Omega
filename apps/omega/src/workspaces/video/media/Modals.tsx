@@ -101,7 +101,7 @@ export function ProxySuggestion({ floating = false }: { floating?: boolean }) {
   const show = !!ids?.length && (floating || mounted === 0);
   useEffect(() => {
     if (!show) return;
-    const t = setTimeout(() => suggestProxies(null), 30_000);
+    const t = setTimeout(() => suggestProxies(null), 60_000);
     return () => clearTimeout(t);
   }, [show, ids]);
   if (!show || !ids) return null;

@@ -47,22 +47,13 @@ export function withTimeout<T>(p: Promise<T>, ms: number, message: string, signa
   });
 }
 
-let channel: MessageChannel | null = null;
-const waiting: (() => void)[] = [];
-
-/** Yields to the event loop (input, paint) without the 4 ms setTimeout clamp. */
+/**
+ * Yields to the event loop with a timer task, so input, progress updates and
+ * painting get their turn between frames (continuation-priority yields such
+ * as scheduler.yield() can starve rendering during a long export).
+ */
 export function yieldToEventLoop(): Promise<void> {
-  const sched = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
-  if (sched?.yield) return sched.yield();
-  if (typeof MessageChannel === 'undefined') return new Promise((r) => setTimeout(r, 0));
-  if (!channel) {
-    channel = new MessageChannel();
-    channel.port1.onmessage = () => waiting.shift()?.();
-  }
-  return new Promise((r) => {
-    waiting.push(r);
-    channel!.port2.postMessage(null);
-  });
+  return new Promise((r) => setTimeout(r, 0));
 }
 
 export function errorMessage(err: unknown): string {

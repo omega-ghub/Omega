@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { affApply, layerToFrame } from '../gpu/geometry';
+import { defaultTransform } from '../../state/defaults';
 import {
   anchorPoint,
   apply,
@@ -82,16 +84,55 @@ test('rotation is clockwise on screen', () => {
 test('anchor is the pivot: it does not move when scaling or rotating', () => {
   const base = tf({ x: 40, y: 30, anchorX: 300, anchorY: -100 });
   const p0 = anchorPoint(base, 1920, 1080, 1920, 1080);
-  for (const patch of [{ scale: 2 }, { rotation: 33 }, { scaleX: 0.5, rotation: -120 }])
-    nearV(anchorPoint({ ...base, ...patch }, 1920, 1080, 1920, 1080), p0);
-  // at scale 1 / no rotation the anchor does not move the layer
-  nearV(apply(layerMatrix(base, 1920, 1080, 1920, 1080), { x: 0, y: 0 }), { x: 1000, y: 570 });
+  nearV(p0, { x: 1000, y: 570 });
+  for (const patch of [{ scale: 2 }, { rotation: 33 }, { scaleX: 0.5, rotation: -120 }]) {
+    const t = { ...base, ...patch };
+    nearV(anchorPoint(t, 1920, 1080, 1920, 1080), p0);
+    // the anchor's layer point really is where anchorPoint says
+    nearV(apply(layerMatrix(t, 1920, 1080, 1920, 1080), { x: 300, y: -100 }), p0);
+  }
 });
 
-test('anchor is in layer (source) pixels', () => {
-  // 4K layer fitted at 0.5: anchor 400 source px → 200 sequence px from the center
-  const p = anchorPoint(tf({ anchorX: 400 }), 3840, 2160, 1920, 1080);
-  nearV(p, { x: 960 + 200, y: 540 });
+test('the anchor lands at center + (x, y): an offset anchor moves the layer the other way', () => {
+  // 1:1 layer: anchor (300, -100) → the layer center sits 300 left and 100 below the anchor
+  nearV(apply(layerMatrix(tf({ x: 40, y: 30, anchorX: 300, anchorY: -100 }), 1920, 1080, 1920, 1080), { x: 0, y: 0 }), { x: 700, y: 670 });
+  // 4K layer fitted at 0.5: anchor 400 layer px → 200 sequence px
+  nearV(apply(layerMatrix(tf({ anchorX: 400 }), 3840, 2160, 1920, 1080), { x: 0, y: 0 }), { x: 760, y: 540 });
+});
+
+test('matches the GPU renderer (gpu/geometry.ts layerToFrame) for arbitrary transforms', () => {
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const fits = ['fit', 'fill', 'stretch', 'none'] as const;
+  for (let i = 0; i < 200; i++) {
+    const w = 100 + Math.floor(rnd() * 4000);
+    const h = 100 + Math.floor(rnd() * 2200);
+    const t = {
+      ...defaultTransform(),
+      x: (rnd() - 0.5) * 800,
+      y: (rnd() - 0.5) * 800,
+      scale: 0.1 + rnd() * 3,
+      scaleX: 0.2 + rnd() * 2,
+      scaleY: 0.2 + rnd() * 2,
+      rotation: (rnd() - 0.5) * 720,
+      anchorX: (rnd() - 0.5) * w,
+      anchorY: (rnd() - 0.5) * h,
+      flipH: rnd() > 0.5,
+      flipV: rnd() > 0.5,
+      fit: fits[i % 4],
+    };
+    const mine = layerMatrix(t, w, h, 1920, 1080);
+    const theirs = layerToFrame(t, w, h, 1920, 1080);
+    for (const [px, py] of [
+      [0, 0],
+      [w, 0],
+      [w, h],
+      [w * 0.3, h * 0.8],
+    ]) {
+      const [ex, ey] = affApply(theirs, px, py);
+      nearV(apply(mine, { x: px - w / 2, y: py - h / 2 }), { x: ex, y: ey }, 1e-6);
+    }
+  }
 });
 
 test('inverse round-trips', () => {

@@ -150,7 +150,7 @@ const STEPS: { title: string; body: string; keys: { label: string; action: strin
   {
     title: 'Deliver',
     body: 'Export from the Deliver workspace. Your project saves itself every few seconds.',
-    keys: [{ label: 'Export', action: 'deliver.export', fallback: 'Mod+M' }],
+    keys: [{ label: 'Export', action: 'deliver.quickExport', fallback: 'Mod+M' }],
     icon: I.Export,
   },
 ];

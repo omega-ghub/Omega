@@ -1,6 +1,7 @@
 // Clip: name, label, enabled, notes and the timing fields (start / end /
 // duration / source in), which move and trim through the edit ops.
 
+import { useState } from 'react';
 import { useEditor, useSequence } from '../../../../state/store';
 import { assetOf, type Clip, type Track } from '../../../../state/types';
 import { moveClips, slipClip, trimClip } from '../../../../engine/edit/ops';
@@ -14,6 +15,7 @@ export function ClipSection({ clip, track }: { clip: Clip; track: Track }) {
   const frame = fromFrames(1, seq.fps);
   const hasSource = clip.kind === 'media' || clip.kind === 'sequence';
   const locked = track.locked;
+  const [notesOpen, setNotesOpen] = useState(false);
 
   const setStart = (t: number) => {
     const delta = t - clip.start;
@@ -35,7 +37,20 @@ export function ClipSection({ clip, track }: { clip: Clip; track: Track }) {
   };
 
   return (
-    <Section id="clip" title="Clip" data-testid="ins-sec-clip">
+    <Section
+      id="clip"
+      title="Clip"
+      data-testid="ins-sec-clip"
+      actions={
+        <Toggle
+          checked={clip.enabled}
+          aria-label="Clip enabled"
+          title={clip.enabled ? 'Enabled: click to disable the clip' : 'Disabled: click to enable the clip'}
+          data-testid="ins-clip-enabled"
+          onChange={(on) => editField(clip.id, 'enabled', on ? 'Enable clip' : 'Disable clip', (c) => void (c.enabled = on))}
+        />
+      }
+    >
       <ParamRow label="Name" reserveKeyframe={false}>
         <TextInput
           value={clip.name}
@@ -46,14 +61,6 @@ export function ClipSection({ clip, track }: { clip: Clip; track: Track }) {
       </ParamRow>
       <ParamRow label="Label" reserveKeyframe={false}>
         <LabelPicker value={clip.label} onChange={(l) => editField(clip.id, 'label', 'Set label', (c) => void (c.label = l))} />
-      </ParamRow>
-      <ParamRow label="Enabled" reserveKeyframe={false}>
-        <Toggle
-          checked={clip.enabled}
-          aria-label="Clip enabled"
-          data-testid="ins-clip-enabled"
-          onChange={(on) => editField(clip.id, 'enabled', on ? 'Enable clip' : 'Disable clip', (c) => void (c.enabled = on))}
-        />
       </ParamRow>
       <div className="ins-grid2">
         <div className="ins-cell">
@@ -100,16 +107,23 @@ export function ClipSection({ clip, track }: { clip: Clip; track: Track }) {
         </InfoRow>
       )}
       {locked && <p className="ins-note">The track is locked; timing can't be changed.</p>}
-      <div className="ins-notes">
-        <TextArea
-          value={clip.notes ?? ''}
-          rows={2}
-          placeholder="Notes"
-          aria-label="Clip notes"
-          data-testid="ins-clip-notes"
-          onChange={(v) => editField(clip.id, 'notes', 'Edit notes', (c) => void (c.notes = v))}
-        />
-      </div>
+      {clip.notes !== undefined || notesOpen ? (
+        <div className="ins-notes">
+          <TextArea
+            value={clip.notes ?? ''}
+            rows={2}
+            autoFocus={notesOpen && !clip.notes}
+            placeholder="Notes"
+            aria-label="Clip notes"
+            data-testid="ins-clip-notes"
+            onChange={(v) => editField(clip.id, 'notes', 'Edit notes', (c) => void (c.notes = v))}
+          />
+        </div>
+      ) : (
+        <button type="button" className="ins-link ins-add-note" data-testid="ins-clip-add-note" onClick={() => setNotesOpen(true)}>
+          Add a note
+        </button>
+      )}
     </Section>
   );
 }

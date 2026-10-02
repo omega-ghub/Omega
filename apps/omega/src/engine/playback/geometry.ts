@@ -3,25 +3,25 @@
 // and anything else that needs to know where a layer lands in the frame.
 // Pure math, no DOM. OWNED BY THE VIEWER PACKAGE.
 //
-// Conventions (state/types.ts, matched by the GPU renderer):
+// Conventions (state/types.ts; identical to the GPU renderer's layerToFrame in
+// engine/gpu/geometry.ts, which geometry.test.ts checks):
 //   * Sequence space: pixels of the rendered frame (W × H), origin top-left,
 //     +x right, +y down.
 //   * Layer space: the layer's own pixels (a media layer's source pixels; a
 //     generated layer is frame-sized), origin at the layer CENTER, +y down.
-//   * `fit` maps layer pixels to "fitted" pixels (fit / fill / stretch / none).
-//   * `x`/`y` offset the layer center from the frame center, in sequence pixels.
-//   * `anchorX`/`anchorY` offset the anchor (the pivot of scale and rotation)
-//     from the layer center, in layer pixels.
+//     Crop and masks are defined here, before the flips ("texture space").
+//   * `fit` scales layer pixels to the frame (fit / fill / stretch / none).
+//   * `anchorX`/`anchorY`: the anchor point, in layer pixels from the layer
+//     center (after flips). It is the pivot of scale and rotation, and it is
+//     the point that lands at frame center + (x, y). With the anchor at the
+//     center, x/y are the offset of the layer center from the frame center.
 //   * `rotation` is in degrees, clockwise on screen.
-//   * flipH / flipV mirror the picture about the layer center (texture space);
-//     crop and masks are defined in that same texture space.
+//   * flipH / flipV mirror the picture about the layer center.
 //
-//   seq = C + xy + F·A + R · S · (F·u − F·A)      (u in layer pixels)
+//   seq = C + (x, y) + R · S · F · (Φ·u − A)
 //
-// where C is the frame center, F = diag(fx, fy) the fit factors, A the anchor,
-// S = diag(scale·scaleX, scale·scaleY) and R the rotation. With scale 1 and no
-// rotation the layer center sits exactly at C + xy whatever the anchor is, and
-// the anchor stays put on screen when scale or rotation change.
+// C frame center, R rotation, S = diag(scale·scaleX, scale·scaleY), F the fit
+// factors, Φ the flips, A the anchor, u a layer point.
 
 import type { Crop, FitMode, Mask, TextProps, Transform } from '../../state/types';
 
@@ -132,28 +132,24 @@ export function fitFactors(fit: FitMode, sw: number, sh: number, W: number, H: n
   }
 }
 
-/** Layer pixels (origin at the layer center) → sequence pixels. Flips are not included (see contentMatrix). */
+/** Layer pixels (texture space, origin at the layer center) → sequence pixels. */
 export function layerMatrix(tf: LayerTransform, sw: number, sh: number, W: number, H: number): Affine {
   const { fx, fy } = fitFactors(tf.fit, sw, sh, W, H);
-  const ax = tf.anchorX * fx;
-  const ay = tf.anchorY * fy;
   return compose(
-    translate(W / 2 + tf.x + ax, H / 2 + tf.y + ay),
+    translate(W / 2 + tf.x, H / 2 + tf.y),
     rotation(tf.rotation),
-    scaling(tf.scale * tf.scaleX, tf.scale * tf.scaleY),
-    translate(-ax, -ay),
-    scaling(fx, fy),
+    scaling(fx * tf.scale * tf.scaleX, fy * tf.scale * tf.scaleY),
+    translate(-tf.anchorX, -tf.anchorY),
+    scaling(tf.flipH ? -1 : 1, tf.flipV ? -1 : 1),
   );
 }
 
-/** Texture space (where crop and masks live, before the flips) → sequence pixels. */
-export function contentMatrix(tf: LayerTransform, sw: number, sh: number, W: number, H: number): Affine {
-  return multiply(layerMatrix(tf, sw, sh, W, H), scaling(tf.flipH ? -1 : 1, tf.flipV ? -1 : 1));
-}
+/** Same map as layerMatrix (crop and masks live in the same texture space). */
+export const contentMatrix = layerMatrix;
 
-/** Where the anchor (pivot) lands in sequence pixels. */
-export function anchorPoint(tf: LayerTransform, sw: number, sh: number, W: number, H: number): Vec {
-  return apply(layerMatrix(tf, sw, sh, W, H), { x: tf.anchorX, y: tf.anchorY });
+/** Where the anchor (pivot) sits in sequence pixels: always frame center + (x, y). */
+export function anchorPoint(tf: LayerTransform, _sw: number, _sh: number, W: number, H: number): Vec {
+  return { x: W / 2 + tf.x, y: H / 2 + tf.y };
 }
 
 export function rectCorners(r: Rect): Vec[] {
@@ -208,11 +204,6 @@ export function intersectRect(a: Rect, b: Rect): Rect {
   const x1 = Math.min(a.x + a.w, b.x + b.w);
   const y1 = Math.min(a.y + a.h, b.y + b.h);
   return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
-}
-
-/** Mirrors a texture-space rect into layer space (the flips). */
-export function flipRect(r: Rect, flipH: boolean, flipV: boolean): Rect {
-  return { x: flipH ? -(r.x + r.w) : r.x, y: flipV ? -(r.y + r.h) : r.y, w: r.w, h: r.h };
 }
 
 function clamp01(v: number): number {
@@ -273,17 +264,12 @@ export function textBox(t: TextProps, measure: TextMeasurer): Rect {
 
 /**
  * Moves the anchor to the layer point under `p` (sequence pixels) without
- * moving the picture: x/y are compensated so the layer matrix is unchanged.
+ * moving the picture: the anchor lands at p, so x/y become p − center, and the
+ * layer matrix is unchanged.
  */
 export function moveAnchorTo(tf: LayerTransform, sw: number, sh: number, W: number, H: number, p: Vec): { anchorX: number; anchorY: number; x: number; y: number } {
-  const m = layerMatrix(tf, sw, sh, W, H);
-  const u = apply(invert(m), p);
-  const { fx, fy } = fitFactors(tf.fit, sw, sh, W, H);
-  // xy' = xy + (I − R·S)(A − A'), all in fitted pixels
-  const dA = { x: (tf.anchorX - u.x) * fx, y: (tf.anchorY - u.y) * fy };
-  const rs = multiply(rotation(tf.rotation), scaling(tf.scale * tf.scaleX, tf.scale * tf.scaleY));
-  const rsd = applyLinear(rs, dA);
-  return { anchorX: u.x, anchorY: u.y, x: tf.x + dA.x - rsd.x, y: tf.y + dA.y - rsd.y };
+  const u = apply(invert(layerMatrix(tf, sw, sh, W, H)), p);
+  return { anchorX: tf.flipH ? -u.x : u.x, anchorY: tf.flipV ? -u.y : u.y, x: p.x - W / 2, y: p.y - H / 2 };
 }
 
 /** Uniform scale factor from dragging a corner away from / toward the pivot. */
@@ -388,8 +374,12 @@ export function maskResize(mask: MaskShape, sw: number, sh: number, u: Vec, axis
   };
 }
 
-/** Points along a mask outline (texture-space layer pixels), grown outward by `grow` layer pixels. */
-export function maskOutline(mask: MaskShape & Pick<Mask, 'shape'>, sw: number, sh: number, grow = 0, segments = 64): Vec[] {
+/**
+ * Points along a mask outline (texture-space layer pixels), grown outward by
+ * `grow` layer pixels. Matches the renderer: half sizes include `grow`, rect
+ * corners are rounded by roundness × the short side (capped at half of it).
+ */
+export function maskOutline(mask: MaskShape & Pick<Mask, 'shape'> & Partial<Pick<Mask, 'roundness'>>, sw: number, sh: number, grow = 0, segments = 64): Vec[] {
   const hw = Math.max(0.5, (mask.width * sw) / 2 + grow);
   const hh = Math.max(0.5, (mask.height * sh) / 2 + grow);
   const c = maskCenter(mask, sw, sh);
@@ -401,10 +391,25 @@ export function maskOutline(mask: MaskShape & Pick<Mask, 'shape'>, sw: number, s
       pts.push({ x: Math.cos(a) * hw, y: Math.sin(a) * hh });
     }
   } else {
-    pts.push({ x: -hw, y: -hh }, { x: hw, y: -hh }, { x: hw, y: hh }, { x: -hw, y: hh });
+    const r = Math.min(Math.max(0, mask.roundness ?? 0) * Math.min(2 * hw, 2 * hh), Math.min(hw, hh));
+    if (r <= 0.01) pts.push({ x: -hw, y: -hh }, { x: hw, y: -hh }, { x: hw, y: hh }, { x: -hw, y: hh });
+    else {
+      const corners: [number, number, number][] = [
+        [hw - r, -hh + r, -90],
+        [hw - r, hh - r, 0],
+        [-hw + r, hh - r, 90],
+        [-hw + r, -hh + r, 180],
+      ];
+      const steps = 8;
+      for (const [cx, cy, a0] of corners)
+        for (let i = 0; i <= steps; i++) {
+          const a = ((a0 + (i / steps) * 90) * Math.PI) / 180;
+          pts.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+        }
+    }
   }
   return pts.map((p) => {
-    const r = applyLinear(rot, p);
-    return { x: r.x + c.x, y: r.y + c.y };
+    const q = applyLinear(rot, p);
+    return { x: q.x + c.x, y: q.y + c.y };
   });
 }

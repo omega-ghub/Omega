@@ -18,7 +18,7 @@ import {
   setInputTransformForSource,
   toggleBypass,
 } from './colorActions';
-import { Select, Slider, SliderRow, ToolButton } from './controls';
+import { kbd, Select, Slider, SliderRow, ToolButton } from './controls';
 import { CurveEditor } from './CurveEditor';
 import { Gallery } from './Gallery';
 import { clipUnderPlayhead, setGradeParam, useGradeClip, useGradeLocal } from './grade';
@@ -126,12 +126,12 @@ function ClipGrade({ clip, tab, setTab }: { clip: Clip; tab: Tab; setTab: (t: Ta
       </header>
 
       <div className="cl-toolbar" role="toolbar" aria-label="Grade tools">
-        <ToolButton icon={<CI.Bypass size={15} />} label="Bypass" iconOnly title={bypassed ? 'Grade bypassed: click to enable (Ctrl+Alt+B)' : 'Bypass the grade (Ctrl+Alt+B)'} active={bypassed} onClick={toggleBypass} testid="cl-bypass" />
-        <ToolButton icon={<CI.Split size={15} />} label="Split" iconOnly title="Compare: split view, ungraded on the left" active={viewer.compare === 'split'} onClick={() => setCompare('split')} testid="cl-compare-split" />
+        <ToolButton icon={<CI.Bypass size={15} />} label="Bypass" iconOnly title={(bypassed ? 'Grade bypassed: click to enable' : 'Bypass the grade') + kbd('color.toggleBypass')} active={bypassed} onClick={toggleBypass} testid="cl-bypass" />
+        <ToolButton icon={<CI.Split size={15} />} label="Split" iconOnly title={`Compare: split view, ungraded on the left${kbd('color.compareSplit')}`} active={viewer.compare === 'split'} onClick={() => setCompare('split')} testid="cl-compare-split" />
         <ToolButton icon={<CI.CompareBypass size={15} />} label="Before" iconOnly title="Compare: show the ungraded image" active={viewer.compare === 'bypass'} onClick={() => setCompare('bypass')} testid="cl-compare-bypass" />
         <span className="cl-toolbar__sep" />
-        <ToolButton icon={<CI.Copy size={15} />} label="Copy" iconOnly title="Copy grade (Ctrl+Alt+C)" onClick={copyGrade} testid="cl-copy" />
-        <ToolButton icon={<CI.Paste size={15} />} label="Paste" iconOnly title="Paste grade to the selected clips (Ctrl+Alt+Shift+V)" disabled={!clipboard} onClick={pasteGrade} testid="cl-paste" />
+        <ToolButton icon={<CI.Copy size={15} />} label="Copy" iconOnly title={`Copy grade${kbd('color.copyGrade')}`} onClick={copyGrade} testid="cl-copy" />
+        <ToolButton icon={<CI.Paste size={15} />} label="Paste" iconOnly title={`Paste grade to the selected clips${kbd('color.pasteGrade')}`} disabled={!clipboard} onClick={pasteGrade} testid="cl-paste" />
         <ToolButton icon={<CI.Reset size={15} />} label="Reset" iconOnly title="Reset grade" onClick={resetGrade} testid="cl-reset" />
         <span className="cl-toolbar__sep" />
         <ToolButton icon={<CI.Balance size={15} />} label="Auto" title="Auto balance: neutralize the colour cast of the current frame" onClick={() => void autoBalance()} testid="cl-auto-balance" />

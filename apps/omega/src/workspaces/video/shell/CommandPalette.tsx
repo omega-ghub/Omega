@@ -152,6 +152,12 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       if (!m) continue;
       let score = m.score;
       if (item.recentRank !== undefined) score += 18 - item.recentRank;
+      if (item.binding) score += 4;
+      // the id's last segment naming the query ('timeline.split' for "split") is a strong hint
+      if (item.kind === 'action') {
+        const last = item.key.slice(2).split('.').pop()!.toLowerCase();
+        if (q.toLowerCase().split(/\s+/).some((tok) => last.startsWith(tok))) score += 10;
+      }
       if (item.kind === 'clip') score -= 8;
       scored.push({ item, positions: m.positions, score, section: '' });
     }

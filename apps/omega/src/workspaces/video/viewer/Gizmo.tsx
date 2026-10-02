@@ -34,6 +34,8 @@ import { findLayer, layerInfo, type LayerInfo } from './layers';
 import { useViewerUi } from './uiState';
 
 interface Props {
+  /** False while another tool (type, hand) owns clicks on the picture. */
+  interactive?: boolean;
   graph: FrameGraph;
   /** CSS pixels per sequence pixel. */
   k: number;
@@ -106,7 +108,7 @@ export function writeClipParams(clipId: string, values: Record<string, number>, 
   );
 }
 
-export function Gizmo({ graph, k, frame }: Props) {
+export function Gizmo({ graph, k, frame, interactive = true }: Props) {
   const selection = useEditor((s) => s.selection.clipIds);
   const snapping = useEditor((s) => s.snapping);
   const cropMode = useViewerUi((s) => s.cropMode);
@@ -245,8 +247,10 @@ export function Gizmo({ graph, k, frame }: Props) {
         }
         case 'maskFeather': {
           const m = drag.mask;
+          // Relative to where the drag started (the handle sits a little outside the edge when feather is 0).
+          const v0 = maskLocal(m, sw, sh, u0);
           const v = maskLocal(m, sw, sh, apply(inv0, p));
-          write({ [`masks.${m.id}.feather`]: Math.max(0, Math.round(v.x - ((m.width * sw) / 2 + m.expansion))) });
+          write({ [`masks.${m.id}.feather`]: Math.max(0, Math.round(m.feather + 2 * (v.x - v0.x))) });
           break;
         }
       }
@@ -284,9 +288,10 @@ export function Gizmo({ graph, k, frame }: Props) {
     const d = { x: topMid.x - c.x, y: topMid.y - c.y };
     const len = Math.hypot(d.x, d.y) || 1;
     const rot = { x: topMid.x + (d.x / len) * 26 * px, y: topMid.y + (d.y / len) * 26 * px };
-    const ring = maskOutline(mask, sw, sh, mask.expansion + mask.feather).map((q) => apply(info.content, q));
+    // The renderer feathers across the edge (half inside, half outside): the ring shows the outer extent.
+    const ring = maskOutline(mask, sw, sh, mask.expansion + mask.feather / 2).map((q) => apply(info.content, q));
     const fRot = { x: Math.cos((mask.rotation * Math.PI) / 180), y: Math.sin((mask.rotation * Math.PI) / 180) };
-    const fr = (mask.width * sw) / 2 + mask.expansion + mask.feather;
+    const fr = (mask.width * sw) / 2 + mask.expansion + Math.max(mask.feather / 2, 6 / Math.max(1e-6, k * Math.hypot(info.m.a, info.m.b)));
     const fh = apply(info.content, { x: (mask.x - 0.5) * sw + fRot.x * fr, y: (mask.y - 0.5) * sh + fRot.y * fr });
     maskUi = (
       <g className="vw-gz__mask is-active" data-testid="vw-mask-handles">
@@ -332,7 +337,7 @@ export function Gizmo({ graph, k, frame }: Props) {
 
   const showTransform = !cropMode && !mask;
   return (
-    <svg className="vw-gz" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" data-testid="vw-gizmo">
+    <svg className={`vw-gz ${interactive ? '' : 'is-passive'}`} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" data-testid="vw-gizmo">
       {guides.x.map((x, i) => (
         <line key={`gx${i}`} x1={x} y1={0} x2={x} y2={H} className="vw-gz__guide" />
       ))}

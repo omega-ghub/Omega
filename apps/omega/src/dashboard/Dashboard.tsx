@@ -288,7 +288,7 @@ function AppsTab() {
               <AppMark app={app} size={44} />
               <div className="app-row__text">
                 <div className="app-row__name">
-                  <AppTitle app={app} size="lg" />
+                  <AppTitle app={app} size="lg" describe={false} />
                   {!t.available && <span className="badge badge--outline">{t.phase}</span>}
                   {inst && (
                     <span className="badge badge--accent">
@@ -297,6 +297,7 @@ function AppsTab() {
                     </span>
                   )}
                 </div>
+                <div className="app-title__desc app-row__desc">{t.description}</div>
                 {busy && (
                   <div className="progress app-row__progress">
                     <div className="progress__bar">

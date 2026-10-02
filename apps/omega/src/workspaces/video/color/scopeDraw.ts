@@ -109,7 +109,7 @@ export function drawWaveform(ctx: CanvasRenderingContext2D, w: number, h: number
   clear(ctx, w, h);
   const r = plotRect(w, h, o.dpr);
   levelGraticule(ctx, o, r.x, r.y, r.w, r.h);
-  if (ref) blit(ctx, ref, 0, ref.width, r.x, r.y, r.w, r.h, 0.75);
+  if (ref) blit(ctx, ref, 0, ref.width, r.x, r.y, r.w, r.h, 0.6);
   if (img) blit(ctx, img, 0, img.width, r.x, r.y, r.w, r.h);
 }
 
@@ -129,7 +129,7 @@ export function drawParade(ctx: CanvasRenderingContext2D, w: number, h: number, 
     }
     if (ref) {
       const c = ref.width / 3;
-      blit(ctx, ref, k * c, c, x, r.y, cw, r.h, 0.75);
+      blit(ctx, ref, k * c, c, x, r.y, cw, r.h, 0.6);
     }
     if (img) {
       const c = img.width / 3;
@@ -188,7 +188,7 @@ export function drawVectorscope(ctx: CanvasRenderingContext2D, w: number, h: num
   ctx.stroke();
   ctx.setLineDash([]);
   // traces
-  if (ref) blit(ctx, ref, 0, ref.width, x0, y0, size, size, 0.75);
+  if (ref) blit(ctx, ref, 0, ref.width, x0, y0, size, size, 0.6);
   if (img) blit(ctx, img, 0, img.width, x0, y0, size, size);
   // 75 % target boxes and 100 % dots
   const box = Math.max(6 * d, size * 0.045);

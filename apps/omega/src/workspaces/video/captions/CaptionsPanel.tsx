@@ -141,7 +141,8 @@ function Header({ seq, tracks, track }: { seq: Sequence; tracks: Track[]; track:
           { label: 'Final Cut Pro XML (.fcpxml)…', run: () => exportInterchange('fcpxml'), testid: 'cap-export-fcpxml', disabled: !hasClips(seq) },
           { label: 'YouTube chapters…', run: () => openChapters(), testid: 'cap-export-chapters' },
           { sep: true },
-          { label: 'Import OpenTimelineIO (.otio)…', run: () => importOtioFile(), testid: 'cap-import-otio' },
+          { label: 'Import', heading: true },
+          { label: 'OpenTimelineIO as a new sequence…', run: () => importOtioFile(), testid: 'cap-import-otio' },
         ]}
       />
     </div>

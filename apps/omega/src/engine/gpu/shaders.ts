@@ -2,9 +2,17 @@
 // Everything between passes is premultiplied, scene-linear Rec.709 light in
 // GL texture convention (v = 0 at the bottom row).
 
-import { GLSL_COLOR, glf } from '../color/transforms';
+import { GLSL_COLOR, glf, glslDecodeFn } from '../color/transforms';
 import { TONE_RANGE } from '../color/grade';
-import { GLSL_BLEND } from './blend';
+import { GLSL_BLEND, glslBlendFns } from './blend';
+
+const memo = new Map<string, string>();
+/** Memoizes generated shader sources by variant key. */
+export function variant(key: string, make: () => string): string {
+  let v = memo.get(key);
+  if (v === undefined) memo.set(key, (v = make()));
+  return v;
+}
 
 const HEAD = /* glsl */ `#version 300 es
 precision highp float;
@@ -16,46 +24,46 @@ precision highp sampler3D;
 /**
  * Input pass: raw upload (display-encoded, top row first, premultiplied by the
  * browser) → linear premultiplied working texture at the layer's working size.
- * Downscales with an n×n grid of bilinear taps (a box filter in LINEAR light),
- * plus mip LOD for extreme reductions.
+ * Downscales with a TAPS×TAPS grid of bilinear taps (a box filter in LINEAR
+ * light), plus mip LOD for extreme reductions. Specialized per transfer
+ * function, gamut and tap count (compile-time; no per-pixel branching).
  */
-export const FS_INPUT = /* glsl */ `${HEAD}
+export function inputFragment(o: { code: number; gamut: boolean; taps: number }): string {
+  const taps = Math.max(1, Math.min(8, Math.round(o.taps)));
+  return /* glsl */ `${HEAD}
+#define TAPS ${taps}
+${o.gamut ? '#define USE_GAMUT' : ''}
 ${GLSL_COLOR}
+${glslDecodeFn(o.code)}
 uniform sampler2D u_raw;
-uniform int u_flip;
-uniform int u_taps;
 uniform vec2 u_foot;     // output texel footprint in raw uv
 uniform float u_lod;
-uniform int u_code;      // transfer code (engine/color/transforms.ts)
-uniform int u_useGamut;
 uniform mat3 u_gamut;
 in vec2 v_uv;
 out vec4 outColor;
 vec4 tap(vec2 uv) {
   vec4 t = textureLod(u_raw, uv, u_lod);
   float a = clamp(t.a, 0.0, 1.0);
-  if (a <= 0.0) return vec4(0.0);
-  vec3 lin = decodeInput(u_code, t.rgb / a);
-  if (u_useGamut == 1) lin = u_gamut * lin;
+  vec3 lin = decodeIn(a > 0.0 ? t.rgb / a : vec3(0.0));
+#ifdef USE_GAMUT
+  lin = u_gamut * lin;
+#endif
   return vec4(lin * a, a);
 }
 void main() {
-  vec2 uv = v_uv;
-  if (u_flip == 1) uv.y = 1.0 - uv.y;
-  if (u_taps <= 1) { outColor = tap(uv); return; }
+  vec2 uv = vec2(v_uv.x, 1.0 - v_uv.y);
+#if TAPS == 1
+  outColor = tap(uv);
+#else
   vec4 acc = vec4(0.0);
-  float n = float(u_taps);
-  for (int j = 0; j < 8; j++) {
-    if (j >= u_taps) break;
-    for (int i = 0; i < 8; i++) {
-      if (i >= u_taps) break;
-      vec2 o = (vec2(float(i), float(j)) + 0.5) / n - 0.5;
-      acc += tap(uv + o * u_foot);
-    }
-  }
-  outColor = acc / (n * n);
+  for (int j = 0; j < TAPS; j++)
+    for (int i = 0; i < TAPS; i++)
+      acc += tap(uv + ((vec2(float(i), float(j)) + 0.5) / float(TAPS) - 0.5) * u_foot);
+  outColor = acc / float(TAPS * TAPS);
+#endif
 }
 `;
+}
 
 /**
  * Grade pass (feature flags as #defines → one cached program per variant).
@@ -244,32 +252,39 @@ void main() {
  * Placement pass: draws a layer quad into the frame with crop (feathered),
  * masks (rect/ellipse, rotation, roundness, feather, expansion, opacity,
  * invert, add/subtract/intersect), opacity, bicubic upscaling, edge
- * anti-aliasing and blend modes. Normal/add use hardware blending; other
- * modes read a copy of the destination (u_dst).
+ * anti-aliasing and blend modes. Normal/add use hardware blending ('hw');
+ * other modes composite against a copy of the destination ('shader');
+ * adjustment layers lerp the processed backdrop ('adjust').
+ * Specialized per mask count, sampler, blend path and mode.
  */
 export const MAX_MASKS = 8;
-export const FS_PLACE = /* glsl */ `${HEAD}
+export function placeFragment(o: { masks: number; bicubic: boolean; blend: 'hw' | 'shader' | 'adjust'; mode: number }): string {
+  const masks = Math.max(0, Math.min(MAX_MASKS, o.masks));
+  return /* glsl */ `${HEAD}
+#define MASKS ${masks}
+${o.bicubic ? '#define BICUBIC' : ''}
+#define BLEND_${o.blend.toUpperCase()}
 ${GLSL_BLEND}
+${glslBlendFns(o.mode)}
 uniform sampler2D u_layer;
 uniform sampler2D u_dst;
 uniform vec2 u_dstSize;
-uniform int u_mode;
-uniform int u_shaderBlend;  // 1: composite with u_dst in the shader
-uniform int u_adjust;       // 1: adjustment layer (lerp to the processed copy)
 uniform float u_opacity;
 uniform vec2 u_layerPx;     // layer size in layer px
 uniform vec2 u_texSize;     // layer texture size in texels
-uniform int u_bicubic;
 uniform vec4 u_crop;        // left, top, right, bottom (fractions)
 uniform float u_cropFeather;
-uniform int u_maskCount;
-uniform vec4 u_mA[${MAX_MASKS}];  // cx, cy, halfW, halfH (layer px)
-uniform vec4 u_mB[${MAX_MASKS}];  // cos, sin, corner radius, feather
-uniform vec4 u_mC[${MAX_MASKS}];  // opacity, invert, mode (0 add, 1 sub, 2 intersect), shape (0 rect, 1 ellipse)
+#if MASKS > 0
+uniform vec4 u_mA[MASKS];  // cx, cy, halfW, halfH (layer px)
+uniform vec4 u_mB[MASKS];  // cos, sin, corner radius, feather
+uniform vec4 u_mC[MASKS];  // opacity, invert, mode (0 add, 1 sub, 2 intersect), shape (0 rect, 1 ellipse)
+#endif
 in vec2 v_uv;
 out vec4 outColor;
 
-vec4 catmullRom(sampler2D tex, vec2 uv, vec2 size) {
+#ifdef BICUBIC
+vec4 sampleLayer(vec2 uv) {
+  vec2 size = u_texSize;
   vec2 sp = uv * size;
   vec2 t1 = floor(sp - 0.5) + 0.5;
   vec2 f = sp - t1;
@@ -283,24 +298,28 @@ vec4 catmullRom(sampler2D tex, vec2 uv, vec2 size) {
   vec2 p3 = (t1 + 2.0) / size;
   vec2 p12 = (t1 + o12) / size;
   vec4 r = vec4(0.0);
-  r += texture(tex, vec2(p0.x, p0.y)) * w0.x * w0.y;
-  r += texture(tex, vec2(p12.x, p0.y)) * w12.x * w0.y;
-  r += texture(tex, vec2(p3.x, p0.y)) * w3.x * w0.y;
-  r += texture(tex, vec2(p0.x, p12.y)) * w0.x * w12.y;
-  r += texture(tex, vec2(p12.x, p12.y)) * w12.x * w12.y;
-  r += texture(tex, vec2(p3.x, p12.y)) * w3.x * w12.y;
-  r += texture(tex, vec2(p0.x, p3.y)) * w0.x * w3.y;
-  r += texture(tex, vec2(p12.x, p3.y)) * w12.x * w3.y;
-  r += texture(tex, vec2(p3.x, p3.y)) * w3.x * w3.y;
+  r += texture(u_layer, vec2(p0.x, p0.y)) * w0.x * w0.y;
+  r += texture(u_layer, vec2(p12.x, p0.y)) * w12.x * w0.y;
+  r += texture(u_layer, vec2(p3.x, p0.y)) * w3.x * w0.y;
+  r += texture(u_layer, vec2(p0.x, p12.y)) * w0.x * w12.y;
+  r += texture(u_layer, vec2(p12.x, p12.y)) * w12.x * w12.y;
+  r += texture(u_layer, vec2(p3.x, p12.y)) * w3.x * w12.y;
+  r += texture(u_layer, vec2(p0.x, p3.y)) * w0.x * w3.y;
+  r += texture(u_layer, vec2(p12.x, p3.y)) * w12.x * w3.y;
+  r += texture(u_layer, vec2(p3.x, p3.y)) * w3.x * w3.y;
   r.a = clamp(r.a, 0.0, 1.0);
   return r;
 }
+#else
+vec4 sampleLayer(vec2 uv) { return texture(u_layer, uv); }
+#endif
 
-// inside distance d (layer px), hard edges anti-aliased over fw, soft edges feathered inward
-float edge(float d, float fw, float feather) {
-  if (feather > fw) return smoothstep(0.0, feather, d);
-  return clamp(d / max(fw, 1e-5) + 0.5, 0.0, 1.0);
+// inside distance d (layer px): hard edges anti-aliased over fw, soft edges feathered inward
+float edge(float d, float fw) {
+  if (u_cropFeather > fw) return smoothstep(0.0, u_cropFeather, d);
+  return clamp(d / fw + 0.5, 0.0, 1.0);
 }
+#if MASKS > 0
 float sdRoundBox(vec2 p, vec2 b, float r) {
   vec2 q = abs(p) - b + r;
   return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
@@ -312,20 +331,21 @@ float sdEllipse(vec2 p, vec2 r) {
   if (k1 < 1e-8) return -min(r.x, r.y);
   return k0 * (k0 - 1.0) / k1;
 }
+#endif
 
 void main() {
   vec2 px = vec2(v_uv.x, 1.0 - v_uv.y) * u_layerPx;  // layer px, top-left origin
   float fwx = max(fwidth(px.x), 1e-4);
   float fwy = max(fwidth(px.y), 1e-4);
-  float cov = edge(px.x - u_crop.x * u_layerPx.x, fwx, u_cropFeather)
-            * edge((1.0 - u_crop.z) * u_layerPx.x - px.x, fwx, u_cropFeather)
-            * edge(px.y - u_crop.y * u_layerPx.y, fwy, u_cropFeather)
-            * edge((1.0 - u_crop.w) * u_layerPx.y - px.y, fwy, u_cropFeather);
-  if (u_maskCount > 0) {
+  float cov = edge(px.x - u_crop.x * u_layerPx.x, fwx)
+            * edge((1.0 - u_crop.z) * u_layerPx.x - px.x, fwx)
+            * edge(px.y - u_crop.y * u_layerPx.y, fwy)
+            * edge((1.0 - u_crop.w) * u_layerPx.y - px.y, fwy);
+#if MASKS > 0
+  {
     float fw = max(fwx, fwy);
     float m = u_mC[0].z < 0.5 ? 0.0 : 1.0;
-    for (int i = 0; i < ${MAX_MASKS}; i++) {
-      if (i >= u_maskCount) break;
+    for (int i = 0; i < MASKS; i++) {
       vec2 d = px - u_mA[i].xy;
       vec2 q = vec2(u_mB[i].x * d.x + u_mB[i].y * d.y, -u_mB[i].y * d.x + u_mB[i].x * d.y);
       float sd = u_mC[i].w < 0.5 ? sdRoundBox(q, u_mA[i].zw, u_mB[i].z) : sdEllipse(q, u_mA[i].zw);
@@ -334,67 +354,67 @@ void main() {
       if (u_mA[i].z <= 0.0 || u_mA[i].w <= 0.0) c = 0.0;
       if (u_mC[i].y > 0.5) c = 1.0 - c;
       c *= u_mC[i].x;
-      int mode = int(u_mC[i].z + 0.5);
-      if (mode == 0) m = m + c - m * c;
-      else if (mode == 1) m = m * (1.0 - c);
-      else m = m * c;
+      float mode = u_mC[i].z;
+      m = mode < 0.5 ? m + c - m * c : (mode < 1.5 ? m * (1.0 - c) : m * c);
     }
     cov *= m;
   }
+#endif
   float k = cov * u_opacity;
-  vec4 s = u_bicubic == 1 ? catmullRom(u_layer, v_uv, u_texSize) : texture(u_layer, v_uv);
-  if (u_shaderBlend == 0) { outColor = s * k; return; }
+  vec4 s = sampleLayer(v_uv);
+#if defined(BLEND_HW)
+  outColor = s * k;
+#else
   vec4 d = texture(u_dst, gl_FragCoord.xy / u_dstSize);
-  if (u_adjust == 1) {
-    // s is the processed copy of what is below; keep the backdrop alpha.
-    vec3 cb = d.a > 1e-6 ? d.rgb / d.a : vec3(0.0);
-    vec3 cs = s.a > 1e-6 ? s.rgb / s.a : vec3(0.0);
-    vec3 b = u_mode == 0 ? cs : blendRgb(u_mode, cb, cs);
-    outColor = mix(d, vec4(b * d.a, d.a), k);
-    return;
-  }
-  outColor = compositeW3C(u_mode, s * k, d);
+#if defined(BLEND_ADJUST)
+  // s is the processed copy of what is below; keep the backdrop alpha.
+  vec3 cb = d.a > 1e-6 ? d.rgb / d.a : vec3(0.0);
+  vec3 cs = s.a > 1e-6 ? s.rgb / s.a : vec3(0.0);
+  outColor = mix(d, vec4(blendMode(cb, cs) * d.a, d.a), k);
+#else
+  outColor = compositeW3C(s * k, d);
+#endif
+#endif
 }
 `;
+}
 
 /**
  * Output transform: scene-linear Rec.709 → display code values for the
  * sequence color space, split-compare, matte passthrough and dithering to 8 bit.
- * u_space: 0 rec709 (BT.709 OETF), 1 sRGB, 2 Display P3 (P3-D65 + sRGB
- * transfer), 3 HDR (HLG/PQ) tone-mapped to SDR Rec.709.
+ * space: 0 rec709 (BT.709 OETF), 1 sRGB, 2 Display P3 (P3-D65 + sRGB
+ * transfer), 3 HDR (HLG/PQ) tone-mapped to SDR Rec.709. Specialized per space.
  */
-export const FS_OUTPUT = /* glsl */ `${HEAD}
+export function outputFragment(o: { space: number; split: boolean; passthrough: boolean; dither: boolean }): string {
+  const enc = o.space === 1 || o.space === 2 ? 'srgbEncode3' : 'bt709Oetf3';
+  return /* glsl */ `${HEAD}
 ${GLSL_COLOR}
 uniform sampler2D u_a;
 uniform sampler2D u_b;
 uniform float u_split;
-uniform int u_space;
 uniform mat3 u_toP3;
-uniform int u_passthrough;
 uniform float u_dither;
 in vec2 v_uv;
 out vec4 outColor;
 // Interleaved gradient noise (Jimenez 2014): low-discrepancy, blue-ish spectrum.
 float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
 void main() {
-  vec4 c = (u_split >= 0.0 && v_uv.x < u_split) ? texture(u_b, v_uv) : texture(u_a, v_uv);
+  ${o.split ? 'vec4 c = v_uv.x < u_split ? texture(u_b, v_uv) : texture(u_a, v_uv);' : 'vec4 c = texture(u_a, v_uv);'}
   float a = clamp(c.a, 0.0, 1.0);
   vec3 rgb = c.a > 1e-6 ? c.rgb / c.a : vec3(0.0);
-  vec3 e;
-  if (u_passthrough == 1) {
-    e = clamp(rgb, 0.0, 1.0);
-  } else {
-    if (u_space == 3) rgb = tonemapRgb(gamutClip(rgb));
-    if (u_space == 2) rgb = u_toP3 * rgb;
-    rgb = gamutClip(rgb);
-    e = (u_space == 1 || u_space == 2) ? srgbEncode3(rgb) : bt709Oetf3(rgb);
-    e = clamp(e, 0.0, 1.0);
+  ${
+    o.passthrough
+      ? 'vec3 e = clamp(rgb, 0.0, 1.0);'
+      : `${o.space === 3 ? 'rgb = tonemapRgb(gamutClip(rgb));' : ''}
+  ${o.space === 2 ? 'rgb = u_toP3 * rgb;' : ''}
+  rgb = gamutClip(rgb);
+  vec3 e = clamp(${enc}(rgb), 0.0, 1.0);`
   }
-  float n = (ign(gl_FragCoord.xy) - 0.5) * u_dither / 255.0;
-  e = clamp(e + n, 0.0, 1.0);
+  ${o.dither ? 'e = clamp(e + (ign(gl_FragCoord.xy) - 0.5) * u_dither / 255.0, 0.0, 1.0);' : ''}
   outColor = vec4(e * a, a);
 }
 `;
+}
 
 /** Box downscale (readback for scopes). */
 export const FS_DOWNSAMPLE = /* glsl */ `${HEAD}

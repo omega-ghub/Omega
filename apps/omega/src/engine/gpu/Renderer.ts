@@ -32,7 +32,7 @@ import { OUTPUT_CODE, gamutMatrix, graphicsCode, graphicsColorLinear, inputGamut
 import { blendIndex } from './blend';
 import { AFF_IDENTITY, affMul, axisScales, boundsOf, fitFrameInCanvas, layerQuad, layerToFrame, workingScale, type Affine } from './geometry';
 import { ProgramCache, TexturePool, VS_FULL, VS_QUAD, formatRenderable, type GL, type Program, type RT } from './glcore';
-import { CROSS_DISSOLVE_GLSL, FS_DOWNSAMPLE, FS_INPUT, FS_OUTPUT, FS_PLACE, MAX_MASKS, gradeFragment } from './shaders';
+import { CROSS_DISSOLVE_GLSL, FS_DOWNSAMPLE, MAX_MASKS, gradeFragment, inputFragment, outputFragment, placeFragment, variant } from './shaders';
 
 export interface RenderOptions {
   /** Before/after comparison in the viewer: 'split' draws ungraded pixels left of `position` (0..1). */
@@ -171,6 +171,7 @@ export class Renderer {
   private curveTex = new Map<string, { tex: WebGLTexture; used: number }>();
   private lutGpu = new Map<string, LutGpu>();
   private warned = new Set<string>();
+  private fxSrc = new WeakMap<object, Map<string, string>>();
   /** Opt-in GPU profiling: when true, every pass is followed by gl.finish() and timed (slow; diagnostics only). */
   profile = false;
   /** Per-pass milliseconds of the last frame when `profile` is on. */
@@ -620,15 +621,15 @@ export class Renderer {
       if (this.display) this.deleteRT(this.display);
       this.display = this.createRT(fr.w, fr.h, gl.RGBA8);
     }
-    const p = this.prog(VS_FULL, FS_OUTPUT, 'output');
-    if (!p) return;
     const space = (OUTPUT_CODE[graph.colorSpace as OutputSpace] ?? 0) as number;
+    const passthrough = !!main.matte;
+    const dither = this.settings.dither;
+    const p = this.prog(VS_FULL, variant(`out|${space}|${split >= 0}|${passthrough}|${dither}`, () => outputFragment({ space, split: split >= 0, passthrough, dither })), 'output');
+    if (!p) return;
     this.drawFull(p, this.display, { u_a: (main.matte ?? main.rt).tex, u_b: (before ?? main.rt).tex }, () => {
       this.u1f(p, 'u_split', split);
-      this.u1i(p, 'u_space', space);
-      this.uMat3(p, 'u_toP3', gamutMatrix('rec709', 'p3d65'));
-      this.u1i(p, 'u_passthrough', main.matte ? 1 : 0);
-      this.u1f(p, 'u_dither', this.settings.dither ? 0.98 : 0);
+      if (space === 2) this.uMat3(p, 'u_toP3', gamutMatrix('rec709', 'p3d65'));
+      this.u1f(p, 'u_dither', 0.98);
     }, 'output');
 
     // Present: letterbox bars, then the frame.
@@ -785,13 +786,13 @@ export class Renderer {
   /** Raw upload → linear premultiplied, downscaled in linear light. */
   private inputPass(raw: Raw, out: RT, code: number, gamut: Mat3 | null) {
     const gl = this.gl!;
-    const p = this.prog(VS_FULL, FS_INPUT, 'input');
-    if (!p) return;
     const fx = raw.w / out.w;
     const fy = raw.h / out.h;
     const f = Math.max(fx, fy);
     const MAXT = 6;
     const taps = Math.min(MAXT, Math.max(1, Math.ceil(f - 0.01)));
+    const p = this.prog(VS_FULL, variant(`in|${code}|${!!gamut}|${taps}`, () => inputFragment({ code, gamut: !!gamut, taps })), 'input');
+    if (!p) return;
     let lod = 0;
     if (f > MAXT) {
       gl.bindTexture(gl.TEXTURE_2D, raw.tex);
@@ -806,12 +807,8 @@ export class Renderer {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     }
     this.drawFull(p, out, { u_raw: raw.tex }, () => {
-      this.u1i(p, 'u_flip', 1);
-      this.u1i(p, 'u_taps', taps);
       this.u2f(p, 'u_foot', 1 / out.w, 1 / out.h);
       this.u1f(p, 'u_lod', lod);
-      this.u1i(p, 'u_code', code);
-      this.u1i(p, 'u_useGamut', gamut ? 1 : 0);
       if (gamut) this.uMat3(p, 'u_gamut', gamut);
     }, 'input');
   }
@@ -836,7 +833,7 @@ export class Renderer {
       shaper: !!(lut && lut.kind === '3d' && lut.shaper),
       matte,
     };
-    const p = this.prog(VS_FULL, gradeFragment(flags), 'grade');
+    const p = this.prog(VS_FULL, variant(`grade|${flags.wb}|${flags.log}|${flags.curves}|${flags.qual}|${flags.lut}|${flags.shaper}|${flags.matte}`, () => gradeFragment(flags)), 'grade');
     if (!p) return rt;
     const tex: Record<string, WebGLTexture | null> = { u_src: rt.tex };
     if (flags.curves) tex.u_curves = this.curvesTexture(g!);
@@ -1018,8 +1015,16 @@ export class Renderer {
     }
     if (!passes?.length) return null;
     const progs: Program[] = [];
+    let srcs = this.fxSrc.get(def);
+    if (!srcs) this.fxSrc.set(def, (srcs = new Map()));
     for (const pass of passes) {
-      const p = this.prog(VS_FULL, effectFragment(def, pass.glsl), `effect ${def.type}`);
+      let fs = srcs.get(pass.glsl);
+      if (!fs) {
+        fs = effectFragment(def, pass.glsl);
+        if (srcs.size > 256) srcs.clear();
+        srcs.set(pass.glsl, fs);
+      }
+      const p = this.prog(VS_FULL, fs, `effect ${def.type}`);
       if (!p) return null;
       progs.push(p);
     }
@@ -1096,8 +1101,6 @@ export class Renderer {
   private place(img: LayerImage, layer: Pick<LayerNode, 'crop' | 'masks'> | null, target: RT, ctx: Ctx, blend: BlendMode, opacity: number, adjust: boolean) {
     const gl = this.gl!;
     const t0 = this.now();
-    const p = this.prog(VS_QUAD, FS_PLACE, 'place');
-    if (!p) return;
     const fw = target.w;
     const fh = target.h;
     const mo = affMul([ctx.sx, 0, 0, ctx.sy, 0, 0], img.m);
@@ -1117,23 +1120,25 @@ export class Renderer {
     }
     const mode = blendIndex(blend);
     const shaderBlend = adjust || !this.hwBlend || !(mode === 0 || mode === 1);
-    let dst: RT | null = null;
-    if (shaderBlend) {
-      dst = this.acquire(fw, fh);
-      this.copyRegion(target, dst, bounds.x0, bounds.y0, bounds.x1, bounds.y1);
-    }
     // crop
     const c = layer?.crop;
     const cl = Math.min(Math.max(num(c?.left), 0), 1);
     const ct = Math.min(Math.max(num(c?.top), 0), 1);
     const cr = Math.min(Math.max(num(c?.right), 0), 1 - cl);
     const cb = Math.min(Math.max(num(c?.bottom), 0), 1 - ct);
-    if (cl + cr >= 1 || ct + cb >= 1) {
-      this.release(dst);
-      return;
-    }
+    if (cl + cr >= 1 || ct + cb >= 1) return;
     // masks
     const masks = (layer?.masks ?? []).filter((m) => m && m.enabled !== false).slice(0, MAX_MASKS);
+    const texelsPerPx = img.rt.w / img.w; // texels per layer px
+    const bicubic = minScale / texelsPerPx > BICUBIC_ABOVE;
+    const path = adjust ? 'adjust' : shaderBlend ? 'shader' : 'hw';
+    const p = this.prog(VS_QUAD, variant(`place|${masks.length}|${bicubic}|${path}|${mode}`, () => placeFragment({ masks: masks.length, bicubic, blend: path, mode })), 'place');
+    if (!p) return;
+    let dst: RT | null = null;
+    if (shaderBlend) {
+      dst = this.acquire(fw, fh);
+      this.copyRegion(target, dst, bounds.x0, bounds.y0, bounds.x1, bounds.y1);
+    }
     masks.forEach((m, i) => {
       const hw = Math.max((num(m.width) * img.w) / 2 + num(m.expansion), 0);
       const hh = Math.max((num(m.height) * img.h) / 2 + num(m.expansion), 0);
@@ -1147,25 +1152,20 @@ export class Renderer {
     gl.viewport(0, 0, fw, fh);
     gl.useProgram(p.prog);
     this.bindSamplers(p, { u_layer: img.rt.tex, u_dst: dst?.tex });
-    const texelsPerPx = img.rt.w / img.w; // texels per layer px
     this.u2f(p, 'u_dstSize', fw, fh);
-    this.u1i(p, 'u_mode', mode);
-    this.u1i(p, 'u_shaderBlend', shaderBlend ? 1 : 0);
-    this.u1i(p, 'u_adjust', adjust ? 1 : 0);
     this.u1f(p, 'u_opacity', Math.min(Math.max(opacity, 0), 1));
     this.u2f(p, 'u_layerPx', img.w, img.h);
     this.u2f(p, 'u_texSize', img.rt.w, img.rt.h);
-    this.u1i(p, 'u_bicubic', minScale / texelsPerPx > BICUBIC_ABOVE ? 1 : 0);
     this.u4f(p, 'u_crop', cl, ct, cr, cb);
     this.u1f(p, 'u_cropFeather', Math.max(num(c?.feather), 0));
-    this.u1i(p, 'u_maskCount', masks.length);
     if (masks.length) {
+      const n = masks.length * 4;
       const la = p.loc('u_mA');
       const lb = p.loc('u_mB');
       const lc = p.loc('u_mC');
-      if (la) gl.uniform4fv(la, this.maskA);
-      if (lb) gl.uniform4fv(lb, this.maskB);
-      if (lc) gl.uniform4fv(lc, this.maskC);
+      if (la) gl.uniform4fv(la, this.maskA, 0, n);
+      if (lb) gl.uniform4fv(lb, this.maskB, 0, n);
+      if (lc) gl.uniform4fv(lc, this.maskC, 0, n);
     }
     if (shaderBlend) gl.disable(gl.BLEND);
     else {
@@ -1236,9 +1236,15 @@ export class Renderer {
     if (!from && !to) return;
     const def = getTransition(node.transition);
     let p: Program | null = null;
-    if (def) p = this.prog(VS_FULL, transitionFragment(def.params, def.glsl), `transition ${def.type}`);
+    if (def) {
+      let srcs = this.fxSrc.get(def);
+      if (!srcs) this.fxSrc.set(def, (srcs = new Map()));
+      let fs = srcs.get(def.glsl);
+      if (!fs) srcs.set(def.glsl, (fs = transitionFragment(def.params, def.glsl)));
+      p = this.prog(VS_FULL, fs, `transition ${def.type}`);
+    }
     const params: ParamDef[] = p && def ? def.params : [];
-    if (!p) p = this.prog(VS_FULL, transitionFragment([], CROSS_DISSOLVE_GLSL), 'crossDissolve');
+    if (!p) p = this.prog(VS_FULL, variant('crossDissolve', () => transitionFragment([], CROSS_DISSOLVE_GLSL)), 'crossDissolve');
     if (!p) return;
     const out = this.acquire(target.w, target.h);
     const prog = p;

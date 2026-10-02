@@ -17,7 +17,7 @@
 //     smoothness (verified by a final true-peak pass offline).
 //  4. Audio is delayed by L + 6 samples (lookahead + interpolator latency).
 
-import { TP_LATENCY, TruePeakChannel } from './truePeak';
+import { TP_LATENCY, TP_MAX_GAIN, TP_TAPS, TruePeakChannel } from './truePeak';
 
 /** Settings of the master-bus limiter (realtime and offline). */
 export const LIMITER_LOOKAHEAD_MS = 3;
@@ -49,6 +49,8 @@ export class LookaheadLimiter {
   private readonly releaseCoef: number;
 
   private readonly tp: TruePeakChannel[];
+  /** Per channel: samples left during which inter-sample peaks could reach the ceiling. */
+  private readonly hot: Int32Array;
   // audio delay lines
   private readonly delay: Float32Array[];
   private dpos = 0;
@@ -80,6 +82,7 @@ export class LookaheadLimiter {
     const det = this.truePeak ? TP_LATENCY : 0;
     this.latency = this.L + det;
     this.tp = Array.from({ length: this.channels }, () => new TruePeakChannel());
+    this.hot = new Int32Array(this.channels);
     this.delay = Array.from({ length: this.channels }, () => new Float32Array(this.latency + 1));
     this.dqCap = this.L + 4;
     this.dqVal = new Float64Array(this.dqCap);
@@ -105,6 +108,7 @@ export class LookaheadLimiter {
 
   reset(): void {
     for (const t of this.tp) t.reset();
+    this.hot.fill(0);
     for (const d of this.delay) d.fill(0);
     this.dpos = 0;
     this.prevReq = 1;
@@ -127,70 +131,117 @@ export class LookaheadLimiter {
   process(input: ArrayLike<Float32Array | undefined>, output: ArrayLike<Float32Array>, n: number, preGain = 1, inOffset = 0, outOffset = 0): void {
     const C = this.channels;
     const D = this.latency + 1;
+    const L = this.L;
+    const cap = this.dqCap;
+    const ceil = this.ceiling;
+    const enabled = this.enabled;
+    const truePeak = this.truePeak;
+    const hotGate = ceil / TP_MAX_GAIN;
+    const rel = this.releaseCoef;
+    const dqVal = this.dqVal;
+    const dqIdx = this.dqIdx;
+    const box = this.box;
+    const delay = this.delay;
+    const tp = this.tp;
+    const hot = this.hot;
+    let dpos = this.dpos;
+    let dqHead = this.dqHead;
+    let dqLen = this.dqLen;
+    let boxPos = this.boxPos;
+    let boxSum = this.boxSum;
+    let boxCount = this.boxCount;
+    let gain = this.gain;
+    let minGain = this.minGain;
+    let prevReq = this.prevReq;
+    let idx = this.detIndex;
     for (let i = 0; i < n; i++) {
-      // ---- detector
+      // ---- detector (stereo-linked)
       let pk = 0;
       for (let c = 0; c < C; c++) {
         const src = input[c];
-        const x = src && inOffset + i < src.length ? src[inOffset + i] * preGain : 0;
-        // write to delay line
-        this.delay[c][this.dpos] = x;
-        let m: number;
-        if (this.truePeak) m = this.tp[c].push(x);
-        else m = x < 0 ? -x : x;
+        const k = inOffset + i;
+        const x = src !== undefined && k < src.length ? src[k] * preGain : 0;
+        delay[c][dpos] = x;
+        const ax = x < 0 ? -x : x;
+        let m = ax;
+        if (truePeak) {
+          // Interpolated values are bounded by TP_MAX_GAIN × the window's largest
+          // sample: while every sample in the 12-tap window is that far below the
+          // ceiling, no inter-sample peak can need gain reduction, so skip the FIR.
+          const t = tp[c];
+          t.write(x);
+          if (ax >= hotGate) hot[c] = TP_TAPS + 1;
+          if (hot[c] > 0) {
+            hot[c]--;
+            m = t.interp();
+          }
+        }
         if (m > pk) pk = m;
       }
-      const ceil = this.ceiling;
-      let req = this.enabled && pk > ceil ? ceil / pk : 1;
+      let req = enabled && pk > ceil ? ceil / pk : 1;
       // An interpolated segment touches two samples: require the gain for both.
-      const both = req < this.prevReq ? req : this.prevReq;
-      this.prevReq = req;
+      const both = req < prevReq ? req : prevReq;
+      prevReq = req;
       req = both;
 
-      // ---- sliding minimum over the last L+1 requirements (monotonic deque)
-      const idx = this.detIndex++;
-      while (this.dqLen > 0) {
-        const tail = (this.dqHead + this.dqLen - 1) % this.dqCap;
-        if (this.dqVal[tail] >= req) this.dqLen--;
+      // ---- sliding minimum over the last L+2 requirements (monotonic deque)
+      while (dqLen > 0) {
+        let tail = dqHead + dqLen - 1;
+        if (tail >= cap) tail -= cap;
+        if (dqVal[tail] >= req) dqLen--;
         else break;
       }
-      const ins = (this.dqHead + this.dqLen) % this.dqCap;
-      this.dqVal[ins] = req;
-      this.dqIdx[ins] = idx;
-      this.dqLen++;
-      while (this.dqIdx[this.dqHead] < idx - this.L - 1) {
-        this.dqHead = (this.dqHead + 1) % this.dqCap;
-        this.dqLen--;
+      let ins = dqHead + dqLen;
+      if (ins >= cap) ins -= cap;
+      dqVal[ins] = req;
+      dqIdx[ins] = idx;
+      dqLen++;
+      const oldest = idx - L - 1;
+      while (dqIdx[dqHead] < oldest) {
+        dqHead++;
+        if (dqHead === cap) dqHead = 0;
+        dqLen--;
       }
-      const held = this.dqVal[this.dqHead];
+      idx++;
+      const held = dqVal[dqHead];
 
       // ---- moving average (attack ramp)
-      this.boxSum += held - this.box[this.boxPos];
-      this.box[this.boxPos] = held;
-      this.boxPos = this.boxPos + 1 === this.L ? 0 : this.boxPos + 1;
-      if (++this.boxCount >= 8192) {
+      boxSum += held - box[boxPos];
+      box[boxPos] = held;
+      boxPos++;
+      if (boxPos === L) boxPos = 0;
+      if (++boxCount >= 8192) {
         // re-sum occasionally so floating-point drift never accumulates
-        this.boxCount = 0;
+        boxCount = 0;
         let s = 0;
-        for (let k = 0; k < this.L; k++) s += this.box[k];
-        this.boxSum = s;
+        for (let k = 0; k < L; k++) s += box[k];
+        boxSum = s;
       }
-      let target = this.boxSum / this.L;
+      let target = boxSum / L;
       if (target > 1) target = 1;
 
       // ---- release (only slows increases)
-      let g = this.gain;
-      g = target < g ? target : g + (target - g) * this.releaseCoef;
-      this.gain = g;
-      if (g < this.minGain) this.minGain = g;
+      gain = target < gain ? target : gain + (target - gain) * rel;
+      if (gain < minGain) minGain = gain;
 
       // ---- output the delayed sample
-      const rd = (this.dpos + 1) % D;
+      let rd = dpos + 1;
+      if (rd === D) rd = 0;
       for (let c = 0; c < C; c++) {
         const out = output[c];
-        if (out) out[outOffset + i] = this.delay[c][rd] * g;
+        if (out !== undefined) out[outOffset + i] = delay[c][rd] * gain;
       }
-      this.dpos = rd;
+      dpos = rd;
     }
+    this.dpos = dpos;
+    this.dqHead = dqHead;
+    this.dqLen = dqLen;
+    this.boxPos = boxPos;
+    this.boxSum = boxSum;
+    this.boxCount = boxCount;
+    this.gain = gain;
+    this.minGain = minGain;
+    this.prevReq = prevReq;
+    this.detIndex = idx;
   }
 }

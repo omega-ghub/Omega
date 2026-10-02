@@ -106,6 +106,8 @@ interface Drag {
   origins: Ghost[];
   snapAt: number | null;
   readout: string[] | null;
+  /** Readout computed after the live preview ran (shows what the op really applied). */
+  readoutFn?: (previewOk: boolean) => string[] | null;
   marquee?: Overlay['marquee'];
   zoomRange?: Overlay['zoomRange'];
   move(p: Ptr): void;
@@ -347,7 +349,7 @@ export class TimelineController implements TimelineHandle {
       ...EMPTY_OVERLAY,
       ghosts: d ? (previewOk ? d.origins : d.ghosts) : [],
       snapAt: d?.snapAt ?? null,
-      readout: d?.readout && this.lastPtr ? { x: this.lastPtr.x, y: this.lastPtr.y, lines: d.readout } : null,
+      readout: null,
       marquee: d?.marquee ?? null,
       razor: d ? null : this.razorAt,
       zoomRange: d?.zoomRange ?? null,
@@ -374,6 +376,10 @@ export class TimelineController implements TimelineHandle {
       theme: this.theme_(),
       playing: st.playing,
     };
+    if (d && d.moved && this.lastPtr) {
+      const lines = d.readoutFn ? d.readoutFn(previewOk) : d.readout;
+      if (lines?.length) overlay.readout = { x: this.lastPtr.x, y: this.lastPtr.y, lines };
+    }
     const dpr = this.dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const res = this.renderer.drawTracks(ctx, ds);
@@ -401,7 +407,8 @@ export class TimelineController implements TimelineHandle {
           const x1 = Math.min(this.sizeW, r.x + r.w);
           return { id: r.id, name: c.name, trackId: r.trackId, kind, selected: sel.has(r.id), x: Math.round(box.left + x0), y: Math.round(box.top + r.y), w: Math.round(x1 - x0), h: Math.round(r.h), start: c.start, end: c.start + c.duration };
         })
-        .filter((r) => r.w > 0 && r.y + r.h > box.top && r.y < box.bottom);
+        .filter((r) => r.w >= 2 && r.y + r.h > box.top && r.y < box.bottom)
+        .slice(0, 600);
       const sig = list.map((r) => `${r.id}:${r.x}:${r.y}:${r.w}:${r.h}:${r.selected ? 1 : 0}:${r.name}`).join('|');
       if (sig !== this.visibleSig) {
         this.visibleSig = sig;
@@ -1092,23 +1099,29 @@ export class TimelineController implements TimelineHandle {
         newT = t;
         d.snapAt = Math.abs(t - (r.at ?? NaN)) < 1e-9 ? r.at : null;
         const ft = t;
+        let applied: number | null = null;
         d.recipe = (draft) => {
           const s = activeSeqOf(draft);
-          if (mode === 'rate') ops.rateStretch(draft, s, clip.id, edge, ft, { unlinked });
-          else ops.trimClip(draft, s, clip.id, edge, ft, mode, { unlinked });
+          applied = mode === 'rate' ? ops.rateStretch(draft, s, clip.id, edge, ft, { unlinked }) : ops.trimClip(draft, s, clip.id, edge, ft, mode, { unlinked });
         };
         const ns = edge === 'start' ? t : clip.start;
         const ne = edge === 'end' ? t : end0;
         d.ghosts = [{ trackId: track.id, start: ns, end: ne, kind: 'trim' }];
         d.origins = [{ trackId: track.id, start: clip.start, end: end0, kind: 'origin' }];
-        const dur = ne - ns;
-        const lines = [`${formatDelta(t - edgeT, seq.fps)}`, `Duration ${formatTimecode(dur, seq.fps, seq.dropFrame)}`];
-        if (mode === 'rate') lines.push(`Speed ${Math.round(((clip.speed * clip.duration) / Math.max(fr, dur)) * 1000) / 10}%`);
-        d.readout = lines;
+        const requested = t - edgeT;
+        d.readoutFn = (ok) => {
+          const delta = ok && applied !== null ? applied : requested;
+          const dur = clip.duration + (edge === 'end' ? delta : -delta);
+          const lines = [`${formatDelta(delta, seq.fps)}`, `Duration ${formatTimecode(dur, seq.fps, seq.dropFrame)}`];
+          if (mode === 'rate') lines.push(`Speed ${Math.round(((clip.speed * clip.duration) / Math.max(fr, dur)) * 1000) / 10}%`);
+          if (ok && applied === 0 && Math.abs(requested) > 1e-9) lines.push(blockedReason(mode));
+          return lines;
+        };
       },
       up: () => {
         if (!d.moved || !d.recipe || Math.abs(newT - edgeT) < 1e-9) return;
-        cmd.editProject(d.label, d.recipe);
+        const before = S().project;
+        if (cmd.editProject(d.label, d.recipe) && S().project === before) cmd.toast(blockedReason(mode));
       },
     };
     return d;
@@ -1132,9 +1145,13 @@ export class TimelineController implements TimelineHandle {
         delta = sd;
         const fsd = sd;
         const unlinked = !S().linkedSelection;
-        d.recipe = (draft) => void ops.slipClip(draft, activeSeqOf(draft), clip.id, fsd, { unlinked });
-        const inT = clip.inPoint + sd;
-        d.readout = [`In ${formatTimecode(inT, seq.fps, seq.dropFrame)}`, `Out ${formatTimecode(inT + span, seq.fps, seq.dropFrame)}`, `${formatDelta(sd, seq.fps)}`];
+        let applied: number | null = null;
+        d.recipe = (draft) => void (applied = ops.slipClip(draft, activeSeqOf(draft), clip.id, fsd, { unlinked }));
+        d.readoutFn = (ok) => {
+          const a = ok && applied !== null ? applied : sd;
+          const inT = clip.inPoint + a;
+          return [`In ${formatTimecode(inT, seq.fps, seq.dropFrame)}`, `Out ${formatTimecode(inT + span, seq.fps, seq.dropFrame)}`, `${formatDelta(a, seq.fps)}`];
+        };
       },
       up: () => {
         if (!d.moved || !d.recipe || Math.abs(delta) < 1e-9) return;
@@ -1172,13 +1189,18 @@ export class TimelineController implements TimelineHandle {
         const fdt = dt;
         d.snapAt = snapAt;
         const unlinked = !S().linkedSelection;
-        d.recipe = (draft) => void ops.slideClip(draft, activeSeqOf(draft), clip.id, fdt, { unlinked });
+        let applied: number | null = null;
+        d.recipe = (draft) => void (applied = ops.slideClip(draft, activeSeqOf(draft), clip.id, fdt, { unlinked }));
         d.ghosts = [{ trackId: track.id, start: clip.start + dt, end: clip.start + clip.duration + dt, label: clip.name, kind: 'move' }];
         d.origins = [{ trackId: track.id, start: clip.start, end: clip.start + clip.duration, kind: 'origin' }];
-        const lines = [formatDelta(dt, seq.fps)];
-        if (prev) lines.push(`${prev.name}: ${formatTimecode(prev.duration + dt, seq.fps, seq.dropFrame)}`);
-        if (next) lines.push(`${next.name}: ${formatTimecode(next.duration - dt, seq.fps, seq.dropFrame)}`);
-        d.readout = lines;
+        d.readoutFn = (ok) => {
+          const a = ok && applied !== null ? applied : fdt;
+          const lines = [formatDelta(a, seq.fps)];
+          if (prev) lines.push(`${prev.name}: ${formatTimecode(prev.duration + a, seq.fps, seq.dropFrame)}`);
+          if (next) lines.push(`${next.name}: ${formatTimecode(next.duration - a, seq.fps, seq.dropFrame)}`);
+          if (ok && applied === 0 && Math.abs(fdt) > 1e-9) lines.push('Blocked: the neighbours have no more media');
+          return lines;
+        };
       },
       up: () => {
         if (!d.moved || !d.recipe || Math.abs(delta) < 1e-9) return;
@@ -2044,6 +2066,13 @@ export class TimelineController implements TimelineHandle {
     };
     (window as unknown as { __deltaTimeline: typeof api }).__deltaTimeline = api;
   }
+}
+
+function blockedReason(mode: string): string {
+  if (mode === 'ripple') return 'Blocked: another track can’t ripple here (sync lock)';
+  if (mode === 'roll') return 'Blocked: no more media on one side of the edit';
+  if (mode === 'rate') return 'Blocked: speed limit or a neighbouring clip';
+  return 'Blocked: no more media, or a clip is in the way';
 }
 
 const GAIN_LIMIT = 12;

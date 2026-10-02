@@ -54,14 +54,19 @@ export class TruePeakChannel {
     this.pos = 0;
   }
 
-  push(x: number): number {
+  /** Adds a sample to the history without interpolating (cheap). */
+  write(x: number): void {
     // Mirror-buffer ring: hist[pos] and hist[pos + 12] both hold the newest sample,
     // so hist[pos .. pos + 11] is always contiguous, newest first.
     this.pos = this.pos === 0 ? TP_TAPS - 1 : this.pos - 1;
+    this.hist[this.pos] = x;
+    this.hist[this.pos + TP_TAPS] = x;
+  }
+
+  /** Max |value| among the 4 interpolated points between x[n−6], x[n−5] and those two samples. */
+  interp(): number {
     const h = this.hist;
     const p = this.pos;
-    h[p] = x;
-    h[p + TP_TAPS] = x;
     let m = 0;
     const c = TP_COEFS;
     for (let r = 0; r < 4; r++) {
@@ -78,6 +83,11 @@ export class TruePeakChannel {
     if (a0 > m) m = a0;
     if (a1 > m) m = a1;
     return m;
+  }
+
+  push(x: number): number {
+    this.write(x);
+    return this.interp();
   }
 }
 

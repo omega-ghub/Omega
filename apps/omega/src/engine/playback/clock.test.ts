@@ -49,11 +49,33 @@ test('clock holds until audio starts, then follows it without stepping back', ()
   near(c.time(), 2.05);
   audio = 2.04; // audio jitter must not run time backwards
   near(c.time(), 2.05);
+  now += 400;
   audio = 2.5;
   near(c.time(), 2.5);
   c.fallbackToWall();
   now += 1000;
   near(c.time(), 3.5);
+});
+
+test('an audio clock that runs away from wall time is dropped', () => {
+  let now = 0;
+  let audio = 1;
+  const c = new MasterClock(() => now);
+  c.startHeld(1);
+  c.attachAudio(() => audio);
+  now += 200;
+  audio = 1.2;
+  near(c.time(), 1.2);
+  assert.equal(c.usingAudio, true);
+  // the device clock suddenly runs 3 s ahead
+  now += 100;
+  audio = 4.3;
+  const t = c.time();
+  assert.equal(c.usingAudio, false);
+  assert.ok(c.rejectedAudio);
+  assert.ok(t >= 1.2 && t <= 1.31, `continues from wall time (${t})`);
+  now += 500;
+  near(c.time(), t + 0.5);
 });
 
 test('J/L multi-tap shuttle speeds', () => {

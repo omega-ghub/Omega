@@ -215,12 +215,16 @@ function clipEl(ctx: Ctx, seq: Sequence, clip: Clip, offset: string, durF: numbe
       startF,
       el: el(
         'ref-clip',
-        { ref, lane, offset, name: clip.name || nested.name, start: rationalTime(startF, fps), duration: rationalTime(durF, fps), enabled, srcEnable: role === 'audio' ? 'audio' : undefined },
+        { ref, lane, offset, name: clip.name || nested.name, start: rationalTime(startF, fps), duration: rationalTime(durF, fps), enabled, srcEnable: role === 'audio' ? 'audio' : nestedHasAudio(nested) ? 'video' : undefined },
         timeMap ? [timeMap] : [],
       ),
     };
   }
   return null;
+}
+
+function nestedHasAudio(seq: Sequence): boolean {
+  return seq.tracks.some((t) => t.kind === 'audio' && t.clips.length > 0);
 }
 
 function nestedDuration(seq: Sequence): number {

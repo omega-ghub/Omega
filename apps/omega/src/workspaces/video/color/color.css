@@ -876,6 +876,7 @@
   border-radius: var(--radius-sm);
 }
 .cl-look__swatch {
+  background: var(--surface-2);
   display: block;
   width: 100%;
   aspect-ratio: 16 / 9;
