@@ -27,11 +27,12 @@ const cjs = fs.readFileSync(path.join(root, 'node_modules/mediabunny/dist/bundle
 await page.addScriptTag({ content: `window.M = (function(){ var module = { exports: {} }; var exports = module.exports;\n${cjs}\n; return module.exports; })();` });
 await page.waitForFunction(() => typeof window.M?.Output === 'function');
 
+await page.evaluate((cinema) => { window.__cinema = cinema; }, process.env.CINEMA === '1');
 const files = await page.evaluate(async () => {
   const M = window.M;
   const out = {};
 
-  async function makeVideo(name, seconds, fps, w, h, hue, freq) {
+  async function makeVideo(name, seconds, fps, w, h, hue, freq, logLook = false) {
     const videoCodec = await M.getFirstEncodableVideoCodec(['avc', 'vp9', 'vp8'], { width: w, height: h });
     const audioCodec = await M.getFirstEncodableAudioCodec(['aac', 'opus'], { numberOfChannels: 2, sampleRate: 48000 });
     const mp4 = videoCodec === 'avc';
@@ -61,11 +62,21 @@ const files = await page.evaluate(async () => {
       await as.add(buf);
       as.close();
     }
-    const frames = seconds * fps;
+    const frames = Math.round(seconds * fps);
     for (let i = 0; i < frames; i++) {
       const t = i / fps;
-      ctx.fillStyle = `hsl(${hue}, 40%, 12%)`;
-      ctx.fillRect(0, 0, w, h);
+      if (logLook) {
+        // flat, desaturated ramp that looks like ungraded log footage
+        const g = ctx.createLinearGradient(0, 0, w, h);
+        g.addColorStop(0, 'rgb(70,72,76)');
+        g.addColorStop(0.5, 'rgb(120,118,112)');
+        g.addColorStop(1, 'rgb(160,156,150)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, w, h);
+      } else {
+        ctx.fillStyle = `hsl(${hue}, 40%, 12%)`;
+        ctx.fillRect(0, 0, w, h);
+      }
       ctx.fillStyle = `hsl(${hue}, 90%, 55%)`;
       const x = (w * 0.1) + ((w * 0.8) * ((t / seconds) % 1));
       ctx.beginPath();
@@ -83,10 +94,17 @@ const files = await page.evaluate(async () => {
 
   await makeVideo('clip-a', 6, 30, 1280, 720, 210, 440);
   await makeVideo('clip-b', 4, 30, 1280, 720, 20, 660);
+  if (window.__cinema) {
+    // cinema-grade sources: DCI 4K 23.976, UHD 59.94, vertical 9:16, and a
+    // log-style low-contrast gradient clip for color tools
+    await makeVideo('dci4k-23976', 4, 24000 / 1001, 4096, 2160, 280, 330);
+    await makeVideo('uhd-5994', 3, 60000 / 1001, 3840, 2160, 120, 550);
+    await makeVideo('vertical-1080x1920', 4, 30, 1080, 1920, 320, 390);
+    await makeVideo('log-gradient', 4, 24, 1920, 1080, 40, 300, true);
+  }
 
-  // audio only: WAV
-  {
-    const sr = 48000;
+  // audio only: WAV (48 kHz) and a 96 kHz high-rate version
+  for (const sr of window.__cinema ? [48000, 96000] : [48000]) {
     const octx = new OfflineAudioContext(2, sr * 5, sr);
     const osc = octx.createOscillator();
     osc.type = 'triangle';
@@ -104,7 +122,7 @@ const files = await page.evaluate(async () => {
     await src.add(buf);
     src.close();
     await output.finalize();
-    out['music.wav'] = Array.from(new Uint8Array(target.buffer));
+    out[sr === 48000 ? 'music.wav' : 'music-96k.wav'] = Array.from(new Uint8Array(target.buffer));
   }
 
   // still image
@@ -131,6 +149,27 @@ for (const [name, bytes] of Object.entries(files)) {
   console.log('wrote', p, bytes.length, 'bytes');
 }
 await browser.close();
+
+// A 17^3 .cube LUT with a gentle warm, filmic contrast curve.
+{
+  const N = 17;
+  const lines = ['TITLE "Omega Warm Film"', `LUT_3D_SIZE ${N}`, 'DOMAIN_MIN 0 0 0', 'DOMAIN_MAX 1 1 1'];
+  const curve = (x) => x * x * (3 - 2 * x) * 0.9 + x * 0.1; // soft S-curve
+  for (let b = 0; b < N; b++) for (let g = 0; g < N; g++) for (let r = 0; r < N; r++) {
+    const R = curve(r / (N - 1)) * 1.03, G = curve(g / (N - 1)), B = curve(b / (N - 1)) * 0.94;
+    lines.push(`${Math.min(1, R).toFixed(6)} ${G.toFixed(6)} ${Math.min(1, B).toFixed(6)}`);
+  }
+  fs.writeFileSync(path.join(outDir, 'warm-film.cube'), lines.join('\n') + '\n');
+  console.log('wrote warm-film.cube');
+}
+
+// Captions in SRT and a tiny image sequence.
+fs.writeFileSync(path.join(outDir, 'captions.srt'), [
+  '1', '00:00:00,500 --> 00:00:02,000', 'Welcome to Omega.', '',
+  '2', '00:00:02,200 --> 00:00:04,500', 'Cinema-grade editing,\nwithout the subscription trap.', '',
+  '3', '00:00:05,000 --> 00:00:06,000', 'Cut.', '',
+].join('\n'));
+console.log('wrote captions.srt');
 
 function findChromium() {
   const base = process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers';
