@@ -10,10 +10,10 @@
 import { UnsupportedInputFormatError } from 'mediabunny';
 import { makeAsset } from '../../state/defaults';
 import type { AssetKind, InputTransform, MediaAsset } from '../../state/types';
-import { AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, basename, extOf, snapFps, transferToInputTransform, withTimeout } from './mediaMath';
+import { AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, basename, codecLabel, extOf, snapFps, transferToInputTransform, withTimeout } from './mediaMath';
 import { fileExists, fileSize, imageSize, loadImage, openInput, urlForPath } from './source';
 
-export { MEDIA_EXTENSIONS, IMPORT_EXTENSIONS } from './mediaMath';
+export { MEDIA_EXTENSIONS, IMPORT_EXTENSIONS, codecLabel } from './mediaMath';
 
 /** Seconds a still image occupies when placed without settings (project.settings.stillDuration wins). */
 export const STILL_DURATION = 5;
@@ -261,34 +261,6 @@ function probeWithElement(path: string, name: string, kind: AssetKind, size: num
     };
     el.src = urlForPath(path);
   });
-}
-
-const CODEC_LABELS: Record<string, string> = {
-  avc: 'H.264',
-  hevc: 'HEVC',
-  vp8: 'VP8',
-  vp9: 'VP9',
-  av1: 'AV1',
-  prores: 'ProRes',
-  aac: 'AAC',
-  opus: 'Opus',
-  mp3: 'MP3',
-  vorbis: 'Vorbis',
-  flac: 'FLAC',
-  ac3: 'AC-3',
-  eac3: 'E-AC-3',
-  dts: 'DTS',
-  ulaw: 'µ-law',
-  alaw: 'A-law',
-};
-
-/** Human label for a codec id ('avc' → 'H.264', 'pcm-s24' → 'PCM 24-bit'). */
-export function codecLabel(codec: string | undefined | null): string {
-  if (!codec) return '';
-  if (CODEC_LABELS[codec]) return CODEC_LABELS[codec];
-  const pcm = /^pcm-([suf])(\d+)/.exec(codec);
-  if (pcm) return `PCM ${pcm[2]}-bit${pcm[1] === 'f' ? ' float' : ''}`;
-  return codec.toUpperCase();
 }
 
 function describeError(err: unknown): string {

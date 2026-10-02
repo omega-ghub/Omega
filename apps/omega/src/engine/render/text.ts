@@ -223,7 +223,8 @@ export function textAnimState(anim: TextAnimation, local: number, duration: numb
 export function wordAlpha(i: number, n: number, p: number): number {
   if (n <= 0) return 1;
   const k = 1.6;
-  return clamp01((clamp01(p) * (n + k - 1) - i) / k);
+  const v = (clamp01(p) * (n + k - 1) - i) / k;
+  return v >= 1 - 1e-9 ? 1 : clamp01(v);
 }
 
 /** Number of characters a typewriter shows at reveal fraction `p` of `total`. */

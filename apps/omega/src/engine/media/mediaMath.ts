@@ -234,3 +234,47 @@ export function withTimeout<T>(p: Promise<T>, ms: number, message: string): Prom
     );
   });
 }
+
+/** The frame that represents an asset in the browser: its mark in, else 10% in (≤ 1 s). */
+export function posterTime(a: Pick<MediaAsset, 'kind' | 'duration' | 'markIn'>): number {
+  if (a.kind !== 'video') return 0;
+  if (a.markIn != null && a.markIn >= 0 && a.markIn < a.duration) return a.markIn;
+  return Math.min(1, Math.max(0, a.duration) * 0.1);
+}
+
+/** Rounds a frame dimension to an even number (encoders need even sizes). */
+export function evenDim(n: number): number {
+  return Math.max(2, Math.round(n / 2) * 2);
+}
+
+// ---------------------------------------------------------------------------
+// Labels
+// ---------------------------------------------------------------------------
+
+const CODEC_LABELS: Record<string, string> = {
+  avc: 'H.264',
+  hevc: 'HEVC',
+  vp8: 'VP8',
+  vp9: 'VP9',
+  av1: 'AV1',
+  prores: 'ProRes',
+  aac: 'AAC',
+  opus: 'Opus',
+  mp3: 'MP3',
+  vorbis: 'Vorbis',
+  flac: 'FLAC',
+  ac3: 'AC-3',
+  eac3: 'E-AC-3',
+  dts: 'DTS',
+  ulaw: 'µ-law',
+  alaw: 'A-law',
+};
+
+/** Human label for a codec id ('avc' → 'H.264', 'pcm-s24' → 'PCM 24-bit'). */
+export function codecLabel(codec: string | undefined | null): string {
+  if (!codec) return '';
+  if (CODEC_LABELS[codec]) return CODEC_LABELS[codec];
+  const pcm = /^pcm-([suf])(\d+)/.exec(codec);
+  if (pcm) return `PCM ${pcm[2]}-bit${pcm[1] === 'f' ? ' float' : ''}`;
+  return codec.toUpperCase();
+}
