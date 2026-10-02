@@ -1,6 +1,6 @@
 // Omega logo family.
 //
-// The suite mark is the red Ω tile. Each app mark is a dark tile tinted with
+// The suite mark is the red Ω cutout (no tile). Each app mark is a dark tile tinted with
 // the app's color, a hairline accent border, and the app's Greek letter
 // drawn as a rune: straight carved strokes, no font dependency, identical on
 // every OS. Like Adobe's Pr / Ps tiles, the rune is the recognizable part, and
@@ -16,18 +16,18 @@ export interface MarkProps {
   title?: string;
 }
 
-/** The master Omega mark, reproduced from the brand logo (red tile, white Ω keyhole). */
-export function OmegaMark({ size = 32, rounded = true, className, title = 'Omega' }: MarkProps) {
-  const r = rounded ? 200 : 0;
+/**
+ * The Omega cutout: the red Ω keyhole on a transparent background, traced
+ * from the founder's master artwork (resources/omega-cutout.png, 1932 px).
+ * Used for the dashboard brand and the hub's title-bar corner logo.
+ */
+export const OMEGA_CUTOUT_PATH =
+  'M173 1771 V1437 H330 A792 792 0 1 1 1601 1437 H1758 V1771 H1064 V1218 A272 272 0 1 0 864 1218 V1771 Z';
+
+export function OmegaMark({ size = 32, className, title = 'Omega', color = '#FF0000' }: MarkProps & { color?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 1000 1000" className={className} role="img" aria-label={title}>
-      <rect width="1000" height="1000" rx={r} fill="#FF0000" />
-      <g fill="#fff">
-        <circle cx="500" cy="500" r="244" />
-        <rect x="256" y="648" width="488" height="100" />
-      </g>
-      <circle cx="500" cy="508" r="92" fill="#FF0000" />
-      <rect x="469" y="508" width="62" height="240" fill="#FF0000" />
+    <svg width={size} height={size} viewBox="150 150 1632 1632" className={className} role="img" aria-label={title}>
+      <path d={OMEGA_CUTOUT_PATH} fill={color} />
     </svg>
   );
 }
