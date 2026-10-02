@@ -2,9 +2,9 @@
 //
 // * OmegaMark: the red Ω cutout on a transparent background (dashboard brand).
 // * OmegaTile: the red square with the white Ω (window corner logo, OS icon).
-// * AppMark:   each app's flat tile in its own color, with its Greek-letter
-//              rune drawn in a darker shade of that color. Straight, carved
-//              strokes, no font dependency, identical on every OS.
+// * AppMark:   each app built like the Omega tile: a flat square in the app's
+//              color with its Greek-letter rune in white, matching the Ω's
+//              footprint and weight. Straight strokes, no font dependency.
 // * AppTitle:  the app name with one formal line saying what it is for.
 
 import type { AppKind } from './themes';
@@ -49,14 +49,17 @@ export function OmegaTile({ size = 32, rounded = false, className, title = 'Omeg
   );
 }
 
-/** App marks: a flat tile in the app color with the rune in a darker shade. */
-export function AppMark({ app, size = 32, rounded = true, className }: MarkProps & { app: AppKind }) {
-  if (app === 'omega') return <OmegaTile size={size} className={className} />;
+/**
+ * App marks, built exactly like the Omega tile: a flat square in the app's
+ * color with its rune in white, the same footprint and stroke weight as the Ω.
+ */
+export function AppMark({ app, size = 32, rounded = false, className }: MarkProps & { app: AppKind }) {
+  if (app === 'omega') return <OmegaTile size={size} rounded={rounded} className={className} />;
   const t = THEMES[app];
   return (
     <svg width={size} height={size} viewBox="0 0 1000 1000" className={className} role="img" aria-label={`${t.name} — ${t.category}`}>
-      <rect width="1000" height="1000" rx={rounded ? 220 : 0} fill={t.accent} />
-      <Rune app={app} color={t.rune} />
+      <rect width="1000" height="1000" rx={rounded ? 166 : 0} fill={t.accent} />
+      <Rune app={app} color="#FFFFFF" />
     </svg>
   );
 }
@@ -72,87 +75,78 @@ export function AppRune({ app, size = 24, color, className }: { app: AppKind; si
   );
 }
 
-const STROKE = 88;
+/**
+ * Rune weight and footprint match the Ω in the Omega tile: the Ω occupies
+ * the middle 49% of its tile (25.6%–74.4%) and its strokes are 10–15% of the
+ * tile wide, so runes sit in 256–744 with 120-unit strokes.
+ */
+const STROKE = 120;
 
 /**
  * The app runes: each Greek letter rebuilt from straight, carved strokes —
- * no curves; crossing strokes overshoot slightly like chiselled staves.
+ * no curves, heavy and square-cut like the Ω.
  */
 function Rune({ app, color }: { app: AppKind; color: string }) {
-  const common = { fill: 'none', stroke: color, strokeWidth: STROKE, strokeLinejoin: 'miter' as const, strokeLinecap: 'butt' as const, strokeMiterlimit: 12 };
+  const common = { fill: 'none', stroke: color, strokeWidth: STROKE, strokeLinejoin: 'miter' as const, strokeLinecap: 'butt' as const, strokeMiterlimit: 2.2 };
   switch (app) {
     case 'video':
-      // Δ Delta — two staves meeting at a point, cut by an overshooting base
-      return (
-        <g {...common}>
-          <path d="M262 742 L500 262 L738 742" />
-          <path d="M214 742 H786" />
-        </g>
-      );
+      // Δ Delta
+      return <path {...common} d="M500 312 L704 700 L296 700 Z" />;
     case 'image':
-      // Φ Phi — a full stave through a diamond
+      // Φ Phi — a full stave through a wide carved ring
       return (
         <g {...common}>
-          <path d="M500 214 V786" />
-          <path d="M500 330 L676 500 L500 670 L324 500 Z" />
+          <path d="M500 256 V744" />
+          <path d="M420 362 H580 L684 446 V554 L580 638 H420 L316 554 V446 Z" />
         </g>
       );
     case 'photo':
       // Γ Gamma — a stave and a beam
-      return (
-        <g {...common}>
-          <path d="M352 786 V262 H712" />
-          <path d="M712 216 V352" />
-        </g>
-      );
+      return <path {...common} d="M380 744 V316 H684" />;
     case 'vector':
-      // Κ Kappa — a stave with two arms meeting it at one point
+      // Κ Kappa — a stave and two arms
       return (
         <g {...common}>
-          <path d="M318 226 V774" />
-          <path d="M700 238 L360 516 L716 776" />
+          <path d="M344 256 V744" />
+          <path d="M692 268 L420 500 L692 732" />
         </g>
       );
     case 'audio':
       // λ Lambda — a hooked long stave and a short leg
       return (
         <g {...common}>
-          <path d="M292 256 H376 L708 760" />
-          <path d="M540 506 L320 760" />
+          <path d="M286 316 H388 L702 744" />
+          <path d="M532 512 L322 744" />
         </g>
       );
     case 'motion':
-      // τ Tau — a bar and a stave with a kicked foot
+      // τ Tau — a beam and a stave with a kicked foot
       return (
         <g {...common}>
-          <path d="M248 332 H752" />
-          <path d="M500 332 V640 L604 744 H690" />
+          <path d="M256 330 H744" />
+          <path d="M500 330 V614 L590 704 H668" />
         </g>
       );
     case 'three':
-      // Θ Theta — a tall six-sided ring with a bar
+      // Θ Theta — a tall carved ring with a bar
       return (
         <g {...common}>
-          <path d="M500 234 L686 352 V648 L500 766 L314 648 V352 Z" />
-          <path d="M314 500 H686" />
+          <path d="M432 316 H568 L684 432 V568 L568 684 H432 L316 568 V432 Z" />
+          <path d="M316 500 H684" />
         </g>
       );
     case 'web':
       // Ξ Xi — three beams, the middle one short (a layout grid)
       return (
         <g {...common}>
-          <path d="M246 282 H754" />
-          <path d="M352 500 H648" />
-          <path d="M246 718 H754" />
+          <path d="M256 316 H744" />
+          <path d="M356 500 H644" />
+          <path d="M256 684 H744" />
         </g>
       );
     case 'publish':
       // Σ Sigma — a folded beam
-      return (
-        <g {...common}>
-          <path d="M724 274 H300 L540 500 L300 726 H724" />
-        </g>
-      );
+      return <path {...common} d="M712 316 H312 L520 500 L312 684 H712" />;
     default:
       return null;
   }
