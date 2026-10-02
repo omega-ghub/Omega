@@ -34,7 +34,7 @@ function useLayout(ref: React.RefObject<HTMLDivElement | null>): Layout {
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const fit = (w: number) => setLayout(w >= 1040 ? 'wide' : w >= 600 ? 'medium' : 'narrow');
+    const fit = (w: number) => setLayout(w >= 1040 ? 'wide' : w >= 540 ? 'medium' : 'narrow');
     fit(el.getBoundingClientRect().width);
     const ro = new ResizeObserver((entries) => fit(entries[0].contentRect.width));
     ro.observe(el);

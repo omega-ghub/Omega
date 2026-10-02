@@ -59,6 +59,7 @@ export function CurveEditor({ clip }: { clip: Clip }) {
 
   const commit = (list: CurvePoint[], label = 'Adjust curve') => {
     const next = normalizeCurve(list);
+    if (JSON.stringify(next) === JSON.stringify(clip.grade.curves[channel])) return;
     editGradeClip(
       clip.id,
       label,

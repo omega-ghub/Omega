@@ -33,7 +33,7 @@ const worklets = new WeakMap<BaseAudioContext, Promise<boolean>>();
 export function loadLimiter(ctx: BaseAudioContext): Promise<boolean> {
   let p = worklets.get(ctx);
   if (!p) {
-    p = ctx.audioWorklet
+    p = ctx.audioWorklet && limiterUrl
       ? ctx.audioWorklet.addModule(limiterUrl).then(
           () => true,
           (err) => {

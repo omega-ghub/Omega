@@ -17,10 +17,15 @@ export function isIdentityCurve(points: readonly CurvePoint[]): boolean {
   return withEndpoints(points).every((p) => Math.abs(p.x - p.y) < 1e-4);
 }
 
-/** Stored form: [] for identity, otherwise the sorted points including endpoints. */
+/**
+ * Stored form: the sorted points including endpoints, or [] when only the
+ * untouched corner endpoints remain. Interior points are kept even when they
+ * sit on the diagonal (an anchor the user placed on purpose).
+ */
 export function normalizeCurve(points: readonly CurvePoint[]): CurvePoint[] {
-  if (isIdentityCurve(points)) return [];
-  return withEndpoints(points).map((p) => ({ x: round4(p.x), y: round4(p.y) }));
+  const pts = withEndpoints(points).map((p) => ({ x: round4(p.x), y: round4(p.y) }));
+  if (pts.length === 2 && pts[0].y === 0 && pts[1].y === 1 && pts[0].x === 0 && pts[1].x === 1) return [];
+  return pts;
 }
 
 /**

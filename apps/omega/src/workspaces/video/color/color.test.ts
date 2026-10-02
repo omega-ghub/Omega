@@ -5,7 +5,7 @@ import type { Clip, Project } from '../../../state/types';
 import { paramAt, setKeyframe } from '../../../engine/keyframes';
 import { channelStats, estimateIlluminant, solveMatch, solveWhiteBalance, type RGB } from '../../../engine/scopes/analysis';
 import { gradePixel } from '../../../engine/color/grade';
-import { bt709Oetf } from '../../../engine/color/transforms';
+import { bt709InvOetf, bt709Oetf, outputEncodeRgb } from '../../../engine/color/transforms';
 import { compileCurve, evalCurve, isIdentityCurve, normalizeCurve, sampleCurve } from './curves';
 import { compileGrade, linearTable, logDomainTable, offsetForMultiplier, renderSwatch, wbMatrix } from './gradeModel';
 import { composeLook, LOOKS } from './looks';
@@ -25,7 +25,8 @@ import {
 test('curves: identity, endpoints and monotone interpolation', () => {
   assert.equal(evalCurve([], 0.3), 0.3);
   assert.ok(isIdentityCurve([{ x: 0, y: 0 }, { x: 1, y: 1 }]));
-  assert.deepEqual(normalizeCurve([{ x: 0.5, y: 0.5 }]), []);
+  assert.deepEqual(normalizeCurve([{ x: 0, y: 0 }, { x: 1, y: 1 }]), []);
+  assert.equal(normalizeCurve([{ x: 0.5, y: 0.5 }]).length, 3, 'an anchor on the diagonal is kept');
   const pts = [
     { x: 0, y: 0 },
     { x: 0.25, y: 0.15 },
@@ -57,6 +58,26 @@ test('grade model: the default grade is the identity', () => {
   ] as RGB[]) {
     const o = f(c);
     for (let k = 0; k < 3; k++) assert.ok(Math.abs(o[k] - c[k]) < 2e-3, `${c} → ${o}`);
+  }
+});
+
+test('grade model: the precompiled pipeline equals the renderer\'s gradePixel', () => {
+  const grades = [
+    { ...defaultGrade(), exposure: 0.4, temperature: 35, tint: -12, contrast: 1.2, saturation: 0.8, vibrance: 0.3, highlights: -0.2, shadows: 0.15 },
+    { ...defaultGrade(), lift: { r: 0.1, g: 0, b: -0.1, y: 0.05 }, gamma: { r: 0, g: 0.2, b: 0, y: -0.1 }, gain: { r: 0.2, g: -0.1, b: 0, y: 0.1 }, offset: { r: 0.05, g: 0, b: -0.05, y: 0 } },
+    { ...defaultGrade(), curves: { master: [{ x: 0, y: 0.05 }, { x: 0.5, y: 0.55 }, { x: 1, y: 0.95 }], r: [{ x: 0.3, y: 0.35 }], g: [], b: [{ x: 0.6, y: 0.5 }] } },
+    { ...defaultGrade(), qualifier: { ...defaultGrade().qualifier, enabled: true, hueCenter: 20, hueWidth: 60, hueShift: 25, saturation: 1.4, exposure: 0.5 } },
+  ];
+  let seed = 3;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (const g of grades) {
+    const f = compileGrade(g);
+    for (let i = 0; i < 200; i++) {
+      const c: RGB = [rand(), rand(), rand()];
+      const a = f(c);
+      const b = outputEncodeRgb('rec709', gradePixel(g, c.map(bt709InvOetf) as RGB));
+      for (let k = 0; k < 3; k++) assert.ok(Math.abs(a[k] - b[k]) < 1e-9, `${JSON.stringify(c)} → ${a} vs ${b}`);
+    }
   }
 });
 

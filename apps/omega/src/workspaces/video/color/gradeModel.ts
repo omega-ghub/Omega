@@ -2,8 +2,10 @@
 // renderer's CPU twin of its grade pass (engine/color/grade.ts), so look
 // previews and the parameter mappings of Auto balance / Match agree exactly
 // with what the viewer shows. Pure; unit-tested.
-import { gradePixel, LOG_BLACK, LOG_WHITE, WHEEL, whiteBalanceMatrix } from '../../../engine/color/grade';
-import { bt709InvOetf, gradeLogEncode, outputEncodeRgb, srgbDecode, type OutputSpace, type Vec3 } from '../../../engine/color/transforms';
+import { applyLogStage, hueRotationMatrix, LOG_BLACK, LOG_WHITE, logStage, logStageIsIdentity, qualifierKey, WHEEL, whiteBalanceMatrix } from '../../../engine/color/grade';
+import { monotoneCurve } from '../../../engine/color/curves';
+import { applyLut, type ParsedLut } from '../../../engine/color/lut';
+import { apply3, bt709InvOetf, bt709Oetf, gradeLogDecode, gradeLogEncode, outputEncodeRgb, srgbDecode, type OutputSpace, type Vec3 } from '../../../engine/color/transforms';
 import { codeTable, type M3, type RGB } from '../../../engine/scopes/analysis';
 import type { ColorGrade, ColorSpace } from '../../../state/types';
 
@@ -52,10 +54,52 @@ export function offsetForShift(o: number): number {
   return o / WHEEL.offset;
 }
 
-/** Builds a per-pixel function (display RGB 0..1 in and out) for a static grade. */
-export function compileGrade(g: ColorGrade, space: OutputSpace = 'rec709'): (rgb: RGB) => RGB {
+/**
+ * Builds a per-pixel function (display RGB 0..1 in and out) for a static
+ * grade: the renderer's gradePixel pipeline (exposure → white balance → log
+ * stage → curves → qualifier → LUT) with everything that depends only on the
+ * grade (matrices, log-stage constants, curve splines) built once, then the
+ * output encode. Unit-tested to match gradePixel exactly.
+ */
+export function compileGrade(g: ColorGrade, space: OutputSpace = 'rec709', lut: ParsedLut | null = null): (rgb: RGB) => RGB {
   const dec = displayDecode(space as ColorSpace);
-  return (rgb) => outputEncodeRgb(space, gradePixel(g, rgb.map(dec) as Vec3)) as RGB;
+  if (!g.enabled) return (rgb) => outputEncodeRgb(space, rgb.map(dec) as Vec3) as RGB;
+  const ex = Math.pow(2, g.exposure);
+  const W = g.temperature || g.tint ? whiteBalanceMatrix(g.temperature, g.tint) : null;
+  const ls = logStageIsIdentity(g) ? null : logStage(g);
+  const cv = g.curves;
+  const curves = cv.master.length || cv.r.length || cv.g.length || cv.b.length ? { M: monotoneCurve(cv.master), ch: [monotoneCurve(cv.r), monotoneCurve(cv.g), monotoneCurve(cv.b)] } : null;
+  const q = g.qualifier.enabled ? g.qualifier : null;
+  const qExp = q ? Math.pow(2, q.exposure) : 1;
+  const H = q && q.hueShift ? hueRotationMatrix(q.hueShift) : null;
+  const useLut = lut && g.lut.id && g.lut.intensity ? lut : null;
+  return (rgb) => {
+    let c = [dec(rgb[0]) * ex, dec(rgb[1]) * ex, dec(rgb[2]) * ex] as Vec3;
+    if (W) c = apply3(W, c);
+    if (ls) c = applyLogStage(ls, c.map(gradeLogEncode) as Vec3).map(gradeLogDecode) as Vec3;
+    if (curves) {
+      const { M, ch } = curves;
+      c = c.map((v, i) => {
+        const e = bt709Oetf(v);
+        const y = e > 1 ? ch[i](M(1)) + (e - 1) : e < 0 ? ch[i](M(0)) + e : ch[i](M(e));
+        return bt709InvOetf(y);
+      }) as Vec3;
+    }
+    if (q) {
+      const key = qualifierKey(q, c.map(bt709Oetf) as Vec3);
+      let a = c.map((v) => v * qExp) as Vec3;
+      const y = 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
+      a = a.map((v) => y + (v - y) * q.saturation) as Vec3;
+      if (H) a = apply3(H, a);
+      c = c.map((v, i) => v + (a[i] - v) * key) as Vec3;
+    }
+    if (useLut) {
+      const e = c.map(bt709Oetf) as Vec3;
+      const l = applyLut(useLut, e);
+      c = e.map((v, i) => bt709InvOetf(v + (l[i] - v) * g.lut.intensity)) as Vec3;
+    }
+    return outputEncodeRgb(space, c) as RGB;
+  };
 }
 
 /**
