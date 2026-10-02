@@ -371,9 +371,11 @@ function safeName(s: string): string {
   return s.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'Untitled';
 }
 
+/** Save dialog (defaultName without extension, as pickSavePath expects) + write. */
 async function saveText(title: string, defaultName: string, ext: string, text: string): Promise<string | null> {
-  const path = await window.omega.dialogs.pickSavePath(title, defaultName, ext);
+  let path = await window.omega.dialogs.pickSavePath(title, defaultName, ext);
   if (!path) return null;
+  if (!path.toLowerCase().endsWith(`.${ext}`)) path += `.${ext}`;
   await window.omega.files.writeText(path, text);
   return path;
 }
@@ -386,7 +388,7 @@ export async function exportCaptionFile(format: 'srt' | 'vtt' | 'ttml') {
   const text = format === 'srt' ? writeSrt(track.cues) : format === 'vtt' ? writeVtt(track.cues) : writeTtml(track.cues, { fps: seq.fps, title: `${seq.name} ${track.name}`, position: track.captionStyle?.position });
   const label = format === 'ttml' ? 'TTML' : format.toUpperCase();
   try {
-    const path = await saveText(`Export captions as ${label}`, `${safeName(seq.name)} ${track.name}.${format}`, format, text);
+    const path = await saveText(`Export captions as ${label}`, `${safeName(seq.name)} ${track.name}`, format, text);
     if (path) toast(`Exported ${track.cues.length} captions to ${path.split(/[\\/]/).pop()}`, 'success');
   } catch (err) {
     toast(`Export failed: ${(err as Error).message}`, 'error');
@@ -413,7 +415,7 @@ export async function exportInterchange(kind: 'edl' | 'otio' | 'fcpxml') {
       warnings = r.warnings;
     }
     const titles = { edl: 'Export EDL (CMX 3600)', otio: 'Export OpenTimelineIO', fcpxml: 'Export Final Cut Pro XML' };
-    const path = await saveText(titles[kind], `${safeName(seq.name)}.${kind}`, kind, text);
+    const path = await saveText(titles[kind], safeName(seq.name), kind, text);
     if (!path) return;
     const file = path.split(/[\\/]/).pop();
     toast(warnings.length ? `Exported ${file}. ${warnings[0]}` : `Exported ${file}`, warnings.length ? 'info' : 'success');
@@ -435,7 +437,7 @@ export async function saveChapters(text: string) {
   const seq = getSeq();
   if (!seq || !text) return;
   try {
-    const path = await saveText('Export YouTube chapters', `${safeName(seq.name)} chapters.txt`, 'txt', text + '\n');
+    const path = await saveText('Export YouTube chapters', `${safeName(seq.name)} chapters`, 'txt', text + '\n');
     if (path) toast(`Saved chapters to ${path.split(/[\\/]/).pop()}`, 'success');
   } catch (err) {
     toast(`Save failed: ${(err as Error).message}`, 'error');
