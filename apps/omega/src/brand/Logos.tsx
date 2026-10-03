@@ -137,11 +137,10 @@ function Rune({ app, color }: { app: AppKind; color: string }) {
       );
       break;
     case 'image':
-      // Φ Phi
+      // Λ Lambda
       body = (
         <>
-          <ellipse cx="64" cy="64" rx="26" ry="17" fill="none" stroke={color} strokeWidth="12"/>
-          <rect x="54.5" y="32" width="19" height="64"/>
+          <path d="M64.00,32.00 L96.00,96.00 L74.76,96.00 L60.09,66.66 L45.42,96.00 L32.00,96.00 Z"/>
         </>
       );
       break;
@@ -164,10 +163,11 @@ function Rune({ app, color }: { app: AppKind; color: string }) {
       );
       break;
     case 'audio':
-      // Λ Lambda
+      // Φ Phi
       body = (
         <>
-          <path d="M64.00,32.00 L96.00,96.00 L74.76,96.00 L60.09,66.66 L45.42,96.00 L32.00,96.00 Z"/>
+          <ellipse cx="64" cy="64" rx="26" ry="17" fill="none" stroke={color} strokeWidth="12"/>
+          <rect x="54.5" y="32" width="19" height="64"/>
         </>
       );
       break;
