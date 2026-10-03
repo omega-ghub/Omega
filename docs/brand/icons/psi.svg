@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="512" height="512">
 <defs><clipPath id="c"><rect x="32" y="32" width="64" height="64"/></clipPath></defs>
 <rect width="128" height="128" fill="#00B1AC"/>
-<g fill="#fff"><rect x="36" y="32" width="56" height="19"/><rect x="44" y="58.0" width="40" height="12"/><rect x="32" y="77" width="64" height="19"/></g>
+<g fill="#fff"><rect x="54.5" y="32" width="19" height="64"/><path d="M38,32 V50 A26,26 0 0 0 90,50 V32" fill="none" stroke="#fff" stroke-width="12"/></g>
 </svg>

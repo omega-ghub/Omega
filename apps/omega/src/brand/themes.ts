@@ -163,11 +163,11 @@ export const THEMES: Record<AppKind, AppTheme> = {
   }),
   web: app({
     id: 'web',
-    name: 'Xi',
+    name: 'Psi',
     description: 'Website, interface and interactive prototype design.',
     category: 'Web & UI Design',
     short: 'Web',
-    letter: 'Ξ',
+    letter: 'Ψ',
     tagline: 'Design responsive sites and apps, then publish or hand off.',
     accent: '#00B1AC',
     accentDeep: '#0A7A76',

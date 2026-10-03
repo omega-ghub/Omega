@@ -119,12 +119,11 @@ function Rune({ app, color }: { app: AppKind; color: string }) {
       );
       break;
     case 'web':
-      // Ξ Xi
+      // Ψ Psi
       body = (
         <>
-          <rect x="36" y="32" width="56" height="19"/>
-          <rect x="44" y="58.0" width="40" height="12"/>
-          <rect x="32" y="77" width="64" height="19"/>
+          <rect x="54.5" y="32" width="19" height="64"/>
+          <path d="M38,32 V50 A26,26 0 0 0 90,50 V32" fill="none" stroke={color} strokeWidth="12"/>
         </>
       );
       break;
