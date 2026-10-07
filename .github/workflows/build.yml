@@ -104,3 +104,34 @@ jobs:
           files: |
             apps/omega/dist-modules/*.zip
             apps/omega/dist-modules/catalog.json
+
+  # Publishes a GitHub Release (creating the tag server-side) so the installers
+  # and the Delta package have stable public download links, and the hub's
+  # default catalog URL resolves. Tag pushes are handled by the jobs above.
+  release:
+    needs: [build, modules]
+    if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dl
+      - id: ver
+        run: echo "v=$(node -p "require('./apps/omega/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.v }}
+          target_commitish: ${{ github.sha }}
+          name: Omega ${{ steps.ver.outputs.v }}
+          make_latest: true
+          fail_on_unmatched_files: true
+          body: |
+            Omega ${{ steps.ver.outputs.v }}: installers for Windows (.exe), macOS (.dmg) and Linux (.AppImage / .deb), plus the Delta app package and catalog the hub downloads from.
+          files: |
+            dl/**/*.exe
+            dl/**/*.dmg
+            dl/**/*.AppImage
+            dl/**/*.deb
+            dl/**/*.zip
+            dl/**/catalog.json
