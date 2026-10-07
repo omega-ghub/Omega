@@ -27,7 +27,7 @@ export interface TitleTemplate {
   layers(W: number, H: number): TitleLayer[];
 }
 
-const ACCENT = '#8f6bff';
+const ACCENT = '#e8e8ec';
 const INTER = 'Inter Variable, Inter, system-ui, sans-serif';
 const SERIF = 'Georgia, Times New Roman, serif';
 

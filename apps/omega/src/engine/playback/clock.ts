@@ -95,7 +95,7 @@ export class MasterClock {
       // audio clock runs ahead or stalls far behind, it is broken (no device,
       // virtual output): keep going on wall time instead.
       const wall = this.audioFrom + ((this.now() - this.audioWall) / 1000) * this.rateValue;
-      if (t > wall + 0.35 || t < wall - 1.5) {
+      if (t > wall + 0.35 || t < wall - 0.5) {
         this.rejectedAudio = `audio clock ${t.toFixed(3)}s vs wall ${wall.toFixed(3)}s`;
         this.audio = null;
         this.anchorTime = Math.max(this.last, Math.min(wall, this.last + 0.1));

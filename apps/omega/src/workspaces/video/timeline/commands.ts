@@ -257,7 +257,7 @@ export function liftExtract(ripple: boolean) {
   if (!ids.length) return toast('No targeted tracks');
   if (
     editSeq(ripple ? 'Extract' : 'Lift', (s) => {
-      ops.removeRange(s, a, b, ripple, ids);
+      ops.removeRange(s, a, b, ripple, ids, { syncLock: false });
       s.inPoint = null;
       s.outPoint = null;
     })
@@ -656,10 +656,16 @@ export function renameClip(clipId: string, name: string) {
 
 export function reverseClips(ids: string[]) {
   editSeq('Reverse', (s, p) => {
+    const seen = new Set<string>();
     for (const id of ids) {
       const f = findClip(s, id);
       if (!f || f.track.locked || f.clip.kind !== 'media') continue;
-      ops.setSpeed(p, s, id, f.clip.speed, { reverse: !f.clip.reverse, keepDuration: true, unlinked: true });
+      // setSpeed also updates linked partners: handle each linked set once
+      if (f.clip.linkId) {
+        if (seen.has(f.clip.linkId)) continue;
+        seen.add(f.clip.linkId);
+      }
+      ops.setSpeed(p, s, id, f.clip.speed, { reverse: !f.clip.reverse, keepDuration: true, unlinked: !S().linkedSelection });
     }
   });
 }

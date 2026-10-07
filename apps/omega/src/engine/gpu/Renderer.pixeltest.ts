@@ -859,6 +859,44 @@ test('performance: 1920×1080 frame, 4 layers (media + text + masked solid + gra
   return `SwiftShader (CPU) median: full ${med(times).toFixed(1)} ms, half-res ${med(half).toFixed(1)} ms; pool ${JSON.stringify(R.stats.pool)}; programs ${R.stats.programs}`;
 });
 
+test('performance: DCI 4K (4096×2160) source, grade + effects, at quarter and half playback resolution', () => {
+  const big = canvas(4096, 2160, (x) => {
+    const gr = x.createLinearGradient(0, 0, 4096, 0);
+    gr.addColorStop(0, '#203040');
+    gr.addColorStop(1, '#e0c080');
+    x.fillStyle = gr;
+    x.fillRect(0, 0, 4096, 2160);
+  });
+  const g4 = graph(
+    [
+      media('k', big, {
+        grade: grade({ exposure: 0.2, temperature: 10, contrast: 1.15, saturation: 1.1, curves: { master: [{ x: 0.5, y: 0.55 }], r: [], g: [], b: [] } }),
+        effects: [
+          { id: 'f1', type: 'pixeltestInvert', params: { amount: 0.2 } },
+          { id: 'f2', type: 'pixeltestShift', params: { dist: 4 } },
+        ],
+      }),
+    ],
+    { w: 4096, h: 2160 },
+  );
+  const p = provider({ k: big });
+  const out: string[] = [];
+  for (const [w, h] of [[1024, 540], [2048, 1080]]) {
+    R.setSize(w, h);
+    R.render(g4, p);
+    R.readPixels(1);
+    const t: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const t0 = performance.now();
+      R.render(g4, p);
+      R.readPixels(1);
+      t.push(performance.now() - t0);
+    }
+    out.push(`${w}×${h}: median ${[...t].sort((a, b) => a - b)[1].toFixed(0)} ms`);
+  }
+  return `SwiftShader (CPU) 4096×2160 graded + 2 effects → ${out.join(', ')}`;
+});
+
 // sanity: srgbDecode import is used by tests that compare sRGB pipelines
 void srgbDecode;
 

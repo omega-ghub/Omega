@@ -219,7 +219,7 @@
 .ins-btn--primary:hover:not(:disabled) {
   background: var(--accent);
   border-color: transparent;
-  color: #fff;
+  color: var(--accent-fg, #111);
 }
 .ins-chip {
   height: 20px;

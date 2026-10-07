@@ -278,7 +278,7 @@
 }
 .ins-toggle--on .ins-toggle__knob {
   transform: translateX(12px);
-  background: #fff;
+  background: var(--accent-fg, #111);
 }
 .ins-toggle--mixed .ins-toggle__knob {
   transform: translateX(6px);
