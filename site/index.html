@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Omega — Creative Suite, Gorilla Tag Labs &amp; Merch</title>
+<meta name="description" content="Omega Creative Suite: one app for video, audio, image and 3D. Plus Gorilla Tag Labs and official merch.">
+<meta name="theme-color" content="#0c0c0d">
+<meta property="og:title" content="Omega">
+<meta property="og:description" content="One creative suite. One engine. One project file.">
+<meta property="og:image" content="assets/shot-dashboard.webp">
+<link rel="icon" href="assets/favicon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <a class="brand" href="#top"><img src="assets/omega-logo.png" alt="" width="28" height="28"><span>Omega</span></a>
+  <nav aria-label="Primary">
+    <a href="#suite">Creative Suite</a>
+    <a href="#labs">Gorilla Tag Labs</a>
+    <a href="#store">Store</a>
+    <a href="#promises">Promises</a>
+    <a href="#contact">Contact</a>
+  </nav>
+</header>
+
+<main id="main">
+<section class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow">Omega Creative Suite · pre-alpha</p>
+      <h1>One creative suite.<br>One engine. One file.</h1>
+      <p class="lead">Video, audio, image and 3D in a single fast app. Fairly priced, open file format, and it never locks you in.</p>
+      <div class="cta">
+        <a class="btn primary" href="#store">Shop &amp; get access</a>
+        <a class="btn" href="#suite">See the suite</a>
+      </div>
+    </div>
+    <img class="hero-shot" src="assets/shot-dashboard.webp" alt="The Omega dashboard with Video, Audio, Image, 3D and Motion workspaces" width="1440" height="900">
+  </div>
+</section>
+
+<section id="suite" class="wrap section">
+  <h2>Omega Creative Suite</h2>
+  <p class="sub">Adobe sells a bundle of separate apps. Omega is one application with workspaces that share a single document model, so there is nothing to round-trip between.</p>
+  <div class="cards">
+    <article class="card"><h3>Video <span class="tag live">Preview</span></h3><p>Multi-track timeline, real-time preview, Premiere-style shortcuts, MP4/WebM export.</p></article>
+    <article class="card"><h3>Audio <span class="tag">Phase 2</span></h3><p>Mix and master inside the same project as your video.</p></article>
+    <article class="card"><h3>Image <span class="tag">Phase 3</span></h3><p>Layered, non-destructive editing as a native timeline object.</p></article>
+    <article class="card"><h3>3D <span class="tag">Phase 4</span></h3><p>Model and render, then drop the scene straight into a cut.</p></article>
+  </div>
+  <div class="shots">
+    <img src="assets/shot-timeline.webp" alt="Omega Video multi-track timeline" loading="lazy" width="1440" height="900">
+    <img src="assets/shot-export.webp" alt="Omega export dialog with platform presets" loading="lazy" width="1440" height="900">
+  </div>
+</section>
+
+<section id="labs" class="wrap section">
+  <h2>Gorilla Tag Labs</h2>
+  <p class="sub">Experiments, tools and community projects. More details coming soon.</p>
+  <div class="panel">
+    <p>Follow along on social for updates, and grab the supporter pack in the <a href="#store">store</a> when it opens.</p>
+  </div>
+</section>
+
+<section id="store" class="wrap section">
+  <h2>Store</h2>
+  <p class="sub">Apps, licenses and merch. Checkout is handled by a secure hosted payment page, and this site never sees your card.</p>
+  <div class="filters" role="group" aria-label="Filter products">
+    <button class="chip on" data-filter="all">All</button>
+    <button class="chip" data-filter="app">Apps</button>
+    <button class="chip" data-filter="merch">Merch</button>
+  </div>
+  <div id="products" class="products" aria-live="polite"></div>
+</section>
+
+<section id="promises" class="wrap section">
+  <h2>Promises to creators</h2>
+  <ul class="promises">
+    <li><strong>Perpetual license always available.</strong> Stop paying, keep your last version.</li>
+    <li><strong>Cancel in two clicks.</strong> No fees, no traps.</li>
+    <li><strong>Your work is yours.</strong> We never train AI on your content.</li>
+    <li><strong>Open <code>.omega</code> format.</strong> No lock-in.</li>
+    <li><strong>Works offline.</strong> No mandatory sign-in or background services.</li>
+    <li><strong>Windows, macOS and Linux.</strong></li>
+    <li><strong>No tracking on this site.</strong> No analytics, no cookies.</li>
+  </ul>
+</section>
+
+<section id="contact" class="wrap section">
+  <h2>Contact</h2>
+  <p class="sub">Questions, collabs, orders.</p>
+  <div id="contact-links" class="links"></div>
+</section>
+</main>
+
+<footer class="foot">
+  <div class="wrap"><span>© <span id="year"></span> <span id="handle"></span></span><span>Omega is pre-alpha; nothing is for sale until marked available.</span></div>
+</footer>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
