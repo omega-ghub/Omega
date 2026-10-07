@@ -1,0 +1,70 @@
+/* Effects package (prefix fx-). Tokens only. */
+.fx-browser { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--surface); color: var(--text); }
+.fx-tabs { display: flex; gap: 2px; padding: 8px 8px 0; border-bottom: 1px solid var(--border); }
+.fx-tab { padding: 6px 10px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.fx-tab:hover { color: var(--text-2); }
+.fx-tab.is-on { color: var(--text); border-bottom-color: var(--accent); }
+.fx-search { display: flex; align-items: center; gap: 6px; margin: 8px; padding: 0 8px; height: 26px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); color: var(--text-3); }
+.fx-search:focus-within { border-color: var(--border-strong); }
+.fx-search input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; font-size: 12px; color: var(--text); user-select: text; }
+.fx-search__clear { color: var(--text-3); display: inline-flex; }
+.fx-search__clear:hover { color: var(--text); }
+.fx-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 4px 8px; }
+.fx-cat__head { display: flex; align-items: center; gap: 4px; width: 100%; height: 26px; padding: 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); text-align: left; }
+.fx-cat__head:hover { color: var(--text-2); }
+.fx-cat__chev { transition: transform 120ms ease; }
+.fx-cat__chev.is-open { transform: rotate(90deg); }
+.fx-cat__count { margin-left: auto; font-family: var(--mono); font-weight: 400; letter-spacing: 0; }
+.fx-item { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px 0 8px; border-radius: var(--radius-sm); cursor: grab; outline: none; }
+.fx-item:hover, .fx-item:focus-visible { background: var(--surface-3); }
+.fx-item:focus-visible { box-shadow: inset 0 0 0 1px var(--accent); }
+.fx-item__swatch { width: 32px; height: 20px; border-radius: 3px; border: 1px solid var(--border); object-fit: cover; flex: none; background: var(--surface-3); }
+.fx-item__name { flex: 1; min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fx-item__fav { color: var(--text-3); opacity: 0; display: inline-flex; padding: 2px; border-radius: 4px; }
+.fx-item:hover .fx-item__fav, .fx-item__fav.is-on, .fx-item__fav:focus-visible { opacity: 1; }
+.fx-item__fav.is-on { color: var(--text); }
+.fx-item__fav:hover { color: var(--text); }
+.fx-empty { padding: 20px 12px; color: var(--text-3); font-size: 12px; text-align: center; }
+.fx-desc { flex: none; min-height: 72px; padding: 10px 12px; border-top: 1px solid var(--border); background: var(--surface-2); }
+.fx-desc p { margin: 0; font-size: 12px; color: var(--text-2); line-height: 1.45; }
+.fx-desc__hint { color: var(--text-3) !important; }
+.fx-desc__title { display: flex; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.fx-desc__title span { font-size: 11px; font-weight: 400; color: var(--text-3); }
+
+/* ---------- stack ---------- */
+.fx-card { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); margin: 0 0 6px; position: relative; }
+.fx-card.is-off .fx-card__body { opacity: 0.5; }
+.fx-card.is-dragging { opacity: 0.45; }
+.fx-card.is-over-before::before, .fx-card.is-over-after::after { content: ''; position: absolute; left: 0; right: 0; height: 2px; background: var(--accent); }
+.fx-card.is-over-before::before { top: -4px; }
+.fx-card.is-over-after::after { bottom: -4px; }
+.fx-card__head { display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px 0 2px; }
+.fx-card__grip { display: inline-flex; color: var(--text-3); cursor: grab; padding: 4px 2px; }
+.fx-card__grip:hover { color: var(--text-2); }
+.fx-card__toggle { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 100%; text-align: left; font-size: 12px; font-weight: 500; color: var(--text); }
+.fx-rot { transform: rotate(90deg); }
+.fx-card__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fx-card__anim { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
+.fx-card__body { padding: 2px 8px 8px 10px; border-top: 1px solid var(--border); }
+.fx-iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; color: var(--text-3); }
+.fx-iconbtn:hover:not(:disabled) { color: var(--text); background: var(--surface-3); }
+.fx-note { margin: 4px 0 8px; font-size: 12px; color: var(--text-3); }
+.fx-row--point { align-items: start; padding: 2px 0; }
+.fx-point { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.fx-point__nums { display: flex; gap: 4px; }
+.fx-pad { position: relative; width: 100%; max-width: 160px; aspect-ratio: 16 / 9; border-radius: 4px; border: 1px solid var(--border-strong); background: var(--surface-3); cursor: crosshair; touch-action: none; overflow: hidden; }
+.fx-pad__h, .fx-pad__v { position: absolute; background: var(--text-3); opacity: 0.6; }
+.fx-pad__h { left: 0; right: 0; height: 1px; }
+.fx-pad__v { top: 0; bottom: 0; width: 1px; }
+.fx-pad__dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; border: 1.5px solid var(--text); background: var(--surface); }
+
+/* ---------- popover / menu ---------- */
+.fx-pop { position: fixed; z-index: 1000; overflow-y: auto; background: var(--surface-3); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 4px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+.fx-menu { display: flex; flex-direction: column; }
+.fx-menu__item { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 8px; border-radius: 4px; font-size: 12px; text-align: left; color: var(--text); }
+.fx-menu__item:hover:not(:disabled), .fx-menu__item:focus-visible { background: var(--surface-4); outline: none; }
+.fx-menu__item--danger { color: var(--danger); }
+.fx-menu__icon { display: inline-flex; width: 14px; color: var(--text-3); }
+.fx-menu__label { flex: 1; }
+.fx-menu__hint { color: var(--text-3); font-size: 11px; }
+.fx-menu__sep { height: 1px; margin: 4px 2px; background: var(--border); }
