@@ -150,7 +150,7 @@ function Browser({ className }: { className: string }) {
         const { selectedIds: sel, ordered: ord } = live.current;
         const m = e.shiftKey ? 'range' : mod(e) ? 'toggle' : 'replace';
         const anchor = useMediaUi.getState().anchorId;
-        selectAssets(clickSelect(sel, ord, anchor, id, m), m === 'range' ? anchor : id);
+        selectAssets(clickSelect(sel, ord, anchor, id, m), m === 'range' ? (anchor ?? id) : id);
         rootRef.current?.focus({ preventScroll: true });
       },
       dbl(id) {

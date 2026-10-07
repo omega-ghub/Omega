@@ -3,9 +3,9 @@
 // as CSS variables via data-app on <html>.
 //
 // App icons follow the Omega tile: a flat square in the app's color with the
-// rune in white (src/brand/Logos.tsx). The palette spans the whole rainbow,
-// red (Omega) → orange → yellow → green → teal → cyan → blue → indigo →
-// violet → pink.
+// rune in white (src/brand/Logos.tsx). The palette spans the whole rainbow:
+// red Omega, orange Theta, yellow Kappa, green Tau, teal Psi, cyan Gamma,
+// blue Phi, indigo Lambda, violet Delta, pink Sigma.
 //
 // Internal ids ('video', 'image', …) never change; names live only here.
 
@@ -30,6 +30,11 @@ export interface AppTheme {
   accentSoft: string; // translucent accent for fills
   /** Rune color on the tile (white, like the Ω on the Omega tile). */
   rune: string;
+  /**
+   * In-app UI theme, when it differs from the icon color. Delta's UI is a
+   * simple neutral grey; its icon stays purple.
+   */
+  ui?: { accent: string; accentDeep: string; accentSoft: string; accentFg: string };
   /** @deprecated kept for older call sites; same as `accent`. */
   tile: string;
   phase: string;
@@ -64,24 +69,25 @@ export const THEMES: Record<AppKind, AppTheme> = {
     short: 'Video',
     letter: 'Δ',
     tagline: 'Edit, grade, mix and deliver. Cinema-grade video editing.',
-    accent: '#8A4DFF',
+    accent: '#884CFD',
     accentDeep: '#6A2EE0',
-    accentSoft: 'rgba(138, 77, 255, 0.16)',
+    accentSoft: 'rgba(136, 76, 253, 0.16)',
     rune: '#FFFFFF',
+    ui: { accent: '#DCDCE0', accentDeep: '#B4B4BB', accentSoft: 'rgba(255, 255, 255, 0.10)', accentFg: '#0C0C0D' },
     phase: 'Available now (preview)',
     available: true,
   }),
   image: app({
     id: 'image',
-    name: 'Phi',
-    description: 'Image editing and compositing for photography and design.',
-    category: 'Image Editing',
+    name: 'Lambda',
+    description: 'Photo and image editing, retouching and compositing.',
+    category: 'Photo & Image Editing',
     short: 'Image',
-    letter: 'Φ',
-    tagline: 'Layers, masks, brushes and type on a GPU canvas.',
-    accent: '#2F6BFF',
-    accentDeep: '#1C4FD6',
-    accentSoft: 'rgba(47, 107, 255, 0.16)',
+    letter: 'Λ',
+    tagline: 'Layers, masks, brushes and retouching on a GPU canvas.',
+    accent: '#5045E8',
+    accentDeep: '#3A32C4',
+    accentSoft: 'rgba(80, 69, 232, 0.18)',
     rune: '#FFFFFF',
     phase: 'Phase 3',
     available: false,
@@ -89,14 +95,14 @@ export const THEMES: Record<AppKind, AppTheme> = {
   photo: app({
     id: 'photo',
     name: 'Gamma',
-    description: 'Photo library, RAW development and batch editing.',
-    category: 'Photo Development',
+    description: 'Photo library, RAW development and batch processing.',
+    category: 'Photo Library',
     short: 'Photo',
     letter: 'Γ',
     tagline: 'Organize, develop and deliver entire shoots.',
-    accent: '#00A3E0',
+    accent: '#00A4E0',
     accentDeep: '#0081B3',
-    accentSoft: 'rgba(0, 163, 224, 0.16)',
+    accentSoft: 'rgba(0, 164, 224, 0.16)',
     rune: '#FFFFFF',
     phase: 'Phase 3',
     available: false,
@@ -109,24 +115,24 @@ export const THEMES: Record<AppKind, AppTheme> = {
     short: 'Vector',
     letter: 'Κ',
     tagline: 'Precise paths, type and brand systems that scale to any size.',
-    accent: '#E89E00',
-    accentDeep: '#B87A00',
-    accentSoft: 'rgba(232, 158, 0, 0.16)',
+    accent: '#F7B103',
+    accentDeep: '#C98F00',
+    accentSoft: 'rgba(247, 177, 3, 0.16)',
     rune: '#FFFFFF',
     phase: 'Phase 3',
     available: false,
   }),
   audio: app({
     id: 'audio',
-    name: 'Lambda',
+    name: 'Psi',
     description: 'Audio recording, editing, mixing and restoration.',
     category: 'Audio Editing',
     short: 'Audio',
-    letter: 'λ',
+    letter: 'Ψ',
     tagline: 'Record, mix and repair. Podcasts, music and dialogue.',
-    accent: '#F0328C',
-    accentDeep: '#C71A6C',
-    accentSoft: 'rgba(240, 50, 140, 0.16)',
+    accent: '#00B1AC',
+    accentDeep: '#008A86',
+    accentSoft: 'rgba(0, 177, 172, 0.16)',
     rune: '#FFFFFF',
     phase: 'Phase 2',
     available: false,
@@ -137,11 +143,11 @@ export const THEMES: Record<AppKind, AppTheme> = {
     description: 'Motion graphics, animation and visual effects compositing.',
     category: 'Motion Graphics',
     short: 'Motion',
-    letter: 'τ',
+    letter: 'Τ',
     tagline: 'Keyframes, shape layers and compositing, by layers or nodes.',
-    accent: '#16A34A',
-    accentDeep: '#0E7D38',
-    accentSoft: 'rgba(22, 163, 74, 0.16)',
+    accent: '#1ABA59',
+    accentDeep: '#0F8F3F',
+    accentSoft: 'rgba(26, 186, 89, 0.16)',
     rune: '#FFFFFF',
     phase: 'Phase 2',
     available: false,
@@ -150,28 +156,28 @@ export const THEMES: Record<AppKind, AppTheme> = {
     id: 'three',
     name: 'Theta',
     description: '3D modeling, sculpting, texturing and rendering.',
-    category: '3D Modeling',
+    category: '3D Modeling & Rendering',
     short: '3D',
     letter: 'Θ',
     tagline: 'Model, sculpt, texture and render. Scenes drop straight into Delta.',
-    accent: '#FF6B00',
+    accent: '#FF6A03',
     accentDeep: '#D45400',
-    accentSoft: 'rgba(255, 107, 0, 0.16)',
+    accentSoft: 'rgba(255, 106, 3, 0.16)',
     rune: '#FFFFFF',
     phase: 'Phase 4',
     available: false,
   }),
   web: app({
     id: 'web',
-    name: 'Xi',
+    name: 'Phi',
     description: 'Website, interface and interactive prototype design.',
     category: 'Web & UI Design',
     short: 'Web',
-    letter: 'Ξ',
+    letter: 'Φ',
     tagline: 'Design responsive sites and apps, then publish or hand off.',
-    accent: '#0E9F9A',
-    accentDeep: '#0A7A76',
-    accentSoft: 'rgba(14, 159, 154, 0.16)',
+    accent: '#2E6AFE',
+    accentDeep: '#1C4FD6',
+    accentSoft: 'rgba(46, 106, 254, 0.16)',
     rune: '#FFFFFF',
     phase: 'Phase 4',
     available: false,
@@ -184,9 +190,9 @@ export const THEMES: Record<AppKind, AppTheme> = {
     short: 'Layout',
     letter: 'Σ',
     tagline: 'Books, magazines, decks and PDFs with real typography.',
-    accent: '#4F46E5',
-    accentDeep: '#3A32C4',
-    accentSoft: 'rgba(79, 70, 229, 0.18)',
+    accent: '#F03290',
+    accentDeep: '#C71A6C',
+    accentSoft: 'rgba(240, 50, 144, 0.16)',
     rune: '#FFFFFF',
     phase: 'Phase 5',
     available: false,
@@ -200,7 +206,9 @@ export function applyTheme(kind: AppKind) {
   const t = THEMES[kind];
   const root = document.documentElement;
   root.dataset.app = kind;
-  root.style.setProperty('--accent', t.accent);
-  root.style.setProperty('--accent-deep', t.accentDeep);
-  root.style.setProperty('--accent-soft', t.accentSoft);
+  const c = t.ui ?? { accent: t.accent, accentDeep: t.accentDeep, accentSoft: t.accentSoft, accentFg: '#FFFFFF' };
+  root.style.setProperty('--accent', c.accent);
+  root.style.setProperty('--accent-deep', c.accentDeep);
+  root.style.setProperty('--accent-soft', c.accentSoft);
+  root.style.setProperty('--accent-fg', c.accentFg);
 }

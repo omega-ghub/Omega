@@ -7,7 +7,6 @@
 //              footprint and weight. Straight strokes, no font dependency.
 // * AppTitle:  the app name with one formal line saying what it is for.
 
-import { useId } from 'react';
 import type { AppKind } from './themes';
 import { THEMES } from './themes';
 
@@ -83,107 +82,43 @@ export function AppRune({ app, size = 24, color, className }: { app: AppKind; si
  * Main strokes use the ring weight, secondary strokes the foot weight, and
  * everything is clipped to the Ω's square so ends are cut flat like its feet.
  */
-const MAIN = 152;
-const THIN = 99;
+/**
+ * The runes, rebuilt from the founder's final logo sheet and measured on the
+ * Ω's 1000-unit grid: every rune fills the Ω's square (250–750), main strokes
+ * are 150 wide and secondary strokes 94 wide (the Ω's ring and feet).
+ */
+const RUNES: Partial<Record<AppKind, { d: string; rule?: 'evenodd' | 'nonzero' }>> = {
+  // Δ Delta — carved triangle: thin left side and base, thick right side
+  video: { d: 'M500 250 L750 750 H250 Z M472 517 L402.5 656 H541.5 Z', rule: 'evenodd' },
+  // Λ Lambda — open chevron: thin left leg, thick right leg
+  image: { d: 'M500 250 L750 750 H586 L470 515 L356 750 H250 Z' },
+  // Γ Gamma — heavy stave and beam
+  photo: { d: 'M250 250 H700 V400 H400 V750 H250 Z' },
+  // Κ Kappa — stave with two arms
+  vector: { d: 'M250 250 H400 V384 L498 250 H685 L559 421 L750 675 V750 H619 L466 547 L400 638 V750 H250 Z' },
+  // Ψ Psi — a bowl with three stems
+  audio: {
+    d: 'M250 250 H344 V383 A156 156 0 0 0 656 383 V250 H750 V383 A250 250 0 0 1 250 383 Z M425 250 H575 V750 H425 Z',
+  },
+  // Τ Tau — a bar and a stem
+  motion: { d: 'M250 250 H750 V400 H575 V750 H425 V400 H250 Z' },
+  // Θ Theta — a round ring cut by a heavy bar
+  three: {
+    d: 'M500 250 A250 250 0 1 1 500 750 A250 250 0 1 1 500 250 Z M361 425 A158 158 0 0 1 639 425 Z M639 575 A158 158 0 0 1 361 575 Z',
+    rule: 'evenodd',
+  },
+  // Φ Phi — a heavy stave through an oval ring
+  web: {
+    d: 'M250 500 A250 180 0 1 1 750 500 A250 180 0 1 1 250 500 Z M344 500 A156 84 0 1 0 656 500 A156 84 0 1 0 344 500 Z M425 250 H575 V750 H425 Z',
+  },
+  // Σ Sigma — two thin beams joined by a heavy fold
+  publish: { d: 'M250 250 H750 V344 H463 L619 500 L463 656 H750 V750 H250 V656 L406 500 L250 344 Z' },
+};
 
 function Rune({ app, color }: { app: AppKind; color: string }) {
-  const clip = `rune-box-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
-  const s = { fill: 'none', stroke: color, strokeLinejoin: 'miter' as const, strokeLinecap: 'butt' as const, strokeMiterlimit: 2.2 };
-  const main = { ...s, strokeWidth: MAIN };
-  const thin = { ...s, strokeWidth: THIN };
-  let body: React.ReactNode = null;
-  switch (app) {
-    case 'video':
-      // Δ Delta — a sharp carved triangle, walls at the Ω's foot weight
-      body = <path fill={color} fillRule="evenodd" d="M500 256 L744 744 H256 Z M500 477 L584 645 H416 Z" />;
-      break;
-    case 'image':
-      // Φ Phi — a heavy stave through a thin carved ring
-      body = (
-        <>
-          <path {...thin} d="M410 356 H590 L694 440 V560 L590 644 H410 L306 560 V440 Z" />
-          <path {...main} d="M500 200 V800" />
-        </>
-      );
-      break;
-    case 'photo':
-      // Γ Gamma — heavy stave, thin beam
-      body = (
-        <>
-          <path {...main} d="M332 800 V200" />
-          <path {...thin} d="M256 305.5 H800" />
-        </>
-      );
-      break;
-    case 'vector':
-      // Κ Kappa — heavy stave, thin arms
-      body = (
-        <>
-          <path {...main} d="M332 200 V800" />
-          <path {...thin} d="M820 200 L420 500 L820 800" />
-        </>
-      );
-      break;
-    case 'audio':
-      // λ Lambda — thin hook, heavy long stave, thin leg
-      body = (
-        <>
-          <path {...thin} d="M200 305.5 H420" />
-          <path {...main} d="M350 230 L760 800" />
-          <path {...thin} d="M560 520 L280 820" />
-        </>
-      );
-      break;
-    case 'motion':
-      // τ Tau — thin beam, heavy stave, foot kicking right
-      body = (
-        <>
-          <path {...thin} d="M200 305.5 H800" />
-          <path {...main} d="M470 256 V744" />
-          <path {...thin} d="M500 694.5 H744" />
-        </>
-      );
-      break;
-    case 'three':
-      // Θ Theta — thin carved ring, heavy bar
-      body = (
-        <>
-          <path {...thin} d="M410 305.5 H590 L694.5 410 V590 L590 694.5 H410 L305.5 590 V410 Z" />
-          <path {...main} d="M300 500 H700" />
-        </>
-      );
-      break;
-    case 'web':
-      // Ξ Xi — thin outer beams, heavy middle beam
-      body = (
-        <>
-          <path {...thin} d="M200 305.5 H800" />
-          <path {...main} d="M330 500 H670" />
-          <path {...thin} d="M200 694.5 H800" />
-        </>
-      );
-      break;
-    case 'publish':
-      // Σ Sigma — thin beams, heavy fold
-      body = (
-        <>
-          <path {...thin} d="M256 305.5 H800" />
-          <path {...thin} d="M256 694.5 H800" />
-          <path {...main} strokeMiterlimit={1.6} d="M300 290 L548 500 L300 710" />
-        </>
-      );
-      break;
-  }
-  return (
-    <>
-      <defs>
-        <clipPath id={clip}>
-          <rect x="256" y="256" width="488" height="488" />
-        </clipPath>
-      </defs>
-      <g clipPath={`url(#${clip})`}>{body}</g>
-    </>
-  );
+  const r = RUNES[app];
+  if (!r) return null;
+  return <path d={r.d} fill={color} fillRule={r.rule ?? 'nonzero'} />;
 }
 
 /**

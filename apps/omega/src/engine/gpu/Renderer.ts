@@ -181,7 +181,7 @@ export class Renderer {
   private lutGpu = new Map<string, LutGpu>();
   private warned = new Set<string>();
   private fxSrc = new WeakMap<object, Map<string, string>>();
-  /** Opt-in GPU profiling: when true, every pass is followed by gl.finish() and timed (slow; diagnostics only). */
+  /** Opt-in GPU profiling: when true, every pass is waited for (1-pixel read) and timed (slow; diagnostics only). */
   profile = false;
   /** Per-pass milliseconds of the last frame when `profile` is on. */
   lastProfile: Record<string, number> = {};
@@ -759,7 +759,7 @@ export class Renderer {
         w = sz.w;
         h = sz.h;
         const def = inputTransformDef(layer.inputTransform);
-        raw = this.uploadMedia(layer.clipId, img, src.sourceTime, w, h, def.code >= 3);
+        raw = this.uploadMedia(layer.clipId, img, src.sourceTime, w, h, def.code >= 3 && this.fmtName !== 'RGBA8');
         if (!raw) return null;
         code = def.code;
         gamut = def.gamut === 'rec709' ? null : inputGamutMatrix(def.id);
@@ -1336,8 +1336,20 @@ export class Renderer {
       this.stats.rasterizations++;
     }
     slot.used = this.frameNo;
+    const code = graphicsCode(ctx.space);
+    if (Math.max(slot.w / target.w, slot.h / target.h) <= 1.5) {
+      // Direct path: decode while compositing.
+      if (slot.mips) {
+        const gl = this.gl!;
+        gl.bindTexture(gl.TEXTURE_2D, slot.tex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      }
+      const img: LayerImage = { tex: slot.tex, tw: slot.w, th: slot.h, rt: null, decode: { code, gamut: null }, w: W, h: H, m: AFF_IDENTITY, matte: false };
+      this.place(img, null, target, ctx, 'normal', 1, false);
+      return;
+    }
     const rt = this.acquire(target.w, target.h);
-    this.inputPass(slot, rt, graphicsCode(ctx.space), null);
+    this.inputPass(slot, rt, code, null);
     this.placeFrame(rt, target, ctx, 'normal');
     this.release(rt);
   }

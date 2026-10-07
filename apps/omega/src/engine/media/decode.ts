@@ -317,7 +317,7 @@ class ImageBackend implements Backend {
 // Random access with a shared bitmap cache
 // ---------------------------------------------------------------------------
 
-const BITMAP_BUDGET = 384 * 1024 * 1024;
+const BITMAP_BUDGET = 256 * 1024 * 1024;
 const MAX_READERS = 4;
 const FAIL_RETRY_MS = 10_000;
 

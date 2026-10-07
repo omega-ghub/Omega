@@ -1,6 +1,6 @@
 // Grade operations as pure recipes on immer drafts (no store access), so
 // they are unit-testable and each runs inside ONE labeled mutate() call.
-import { clearKeyframes, isAnimated, paramAt, setParam } from '../../../engine/keyframes';
+import { paramAt, setParam } from '../../../engine/keyframes';
 import type { RGB } from '../../../engine/scopes/analysis';
 import { defaultGrade } from '../../../state/defaults';
 import type { Clip, ColorGrade, InputTransform, Project, RGBY } from '../../../state/types';
@@ -13,13 +13,6 @@ export type WheelName = (typeof WHEELS)[number];
 
 export const SCALAR_PATHS = ['exposure', 'temperature', 'tint', 'contrast', 'pivot', 'saturation', 'vibrance', 'highlights', 'shadows'] as const;
 export type ScalarName = (typeof SCALAR_PATHS)[number];
-
-/** Every keyframeable grade param path. */
-export const GRADE_PARAM_PATHS: string[] = [
-  ...SCALAR_PATHS.map((k) => `grade.${k}`),
-  ...WHEELS.flatMap((w) => ['r', 'g', 'b', 'y'].map((c) => `grade.${w}.${c}`)),
-  'grade.lut.intensity',
-];
 
 export const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 const r4 = (v: number) => Math.round(v * 10000) / 10000;
@@ -200,14 +193,4 @@ export function puckToRgb(x: number, y: number): { r: number; g: number; b: numb
 export function rgbToPuck(c: Pick<RGBY, 'r' | 'g' | 'b'>): { x: number; y: number; luma: number } {
   const luma = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
   return { x: (c.b - luma) / 1.8556 / WHEEL_CHROMA, y: (c.r - luma) / 1.5748 / WHEEL_CHROMA, luma };
-}
-
-/** True when any wheel/scalar is animated (shows the clip has a grade animation). */
-export function hasGradeAnimation(clip: Clip): boolean {
-  return GRADE_PARAM_PATHS.some((p) => isAnimated(clip, p));
-}
-
-/** Turns animation of several paths off at once (keeping the value at `local`). */
-export function clearPaths(clip: Clip, paths: string[], local: number): void {
-  for (const p of paths) clearKeyframes(clip, p, local);
 }

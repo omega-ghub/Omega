@@ -213,9 +213,28 @@ export class PreviewFrames implements FrameProvider {
     for (const id of this.held.keys()) if (!clips.has(id) && !this.wanted.has(id)) this.held.delete(id);
   }
 
+  /**
+   * Stops every element. The picture each visible element shows is kept as a
+   * held frame, so re-seeking it to the exact paused time (which blanks an
+   * element until the seek lands) never flashes the layer away.
+   */
   pauseAll(): void {
+    const wasPlaying = this.playing;
     this.playing = false;
-    for (const v of this.videos.values()) if (!v.el.paused) v.el.pause();
+    for (const v of this.videos.values()) {
+      if (!v.el.paused) v.el.pause();
+      if (!wasPlaying || !this.active.has(v.clipId) || v.broken || v.el.readyState < 2 || typeof createImageBitmap !== 'function') continue;
+      const clipId = v.clipId;
+      createImageBitmap(v.el)
+        .then((bmp) => {
+          // keep an exact frame that arrived meanwhile
+          const want = this.wanted.get(clipId);
+          if (want && this.exact.has(want.key)) return;
+          this.held.set(clipId, bmp);
+          if (!this.playing) this.onUpdate();
+        })
+        .catch(() => {});
+    }
   }
 
   dispose(): void {

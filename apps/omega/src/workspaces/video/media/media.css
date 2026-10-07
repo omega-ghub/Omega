@@ -555,7 +555,7 @@
   z-index: 3;
   background: var(--surface);
 }
-.md-cell--ctl {
+.md-cell.md-cell--ctl {
   padding: 0 4px;
   text-overflow: clip;
 }

@@ -447,7 +447,7 @@ export function ColorField(props: ColorFieldProps) {
       {!compact && (
         <input
           className="ins-color__hex"
-          value={text ?? (alpha && parsed.a < 1 ? toHexColor(parsed.rgb, parsed.a, true) : parsed.rgb).toUpperCase()}
+          value={text ?? parsed.rgb.toUpperCase()}
           disabled={disabled}
           spellCheck={false}
           aria-label={`${props['aria-label'] ?? 'Color'} hex`}

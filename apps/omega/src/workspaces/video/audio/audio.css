@@ -379,6 +379,14 @@
 .au-recbtn:hover:not(:disabled) {
   background: var(--surface-4);
 }
+.au-recbtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.au-tbtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 .au-recbtn.is-recording {
   background: var(--danger, #f0524f);
   border-color: transparent;

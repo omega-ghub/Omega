@@ -729,6 +729,99 @@ test('context loss is survived and restore re-initializes', async () => {
   return 'lost → no-op → restored → correct pixels';
 });
 
+test('resampling: 4× downscale averages in linear light; upscale is bicubic-smooth', () => {
+  // 1-px black/white columns: a linear-light box filter gives 0.5 linear (OETF → 180), a gamma-space one 128.
+  const stripes = canvas(512, 288, (x) => {
+    x.fillStyle = '#000';
+    x.fillRect(0, 0, 512, 288);
+    x.fillStyle = '#fff';
+    for (let i = 0; i < 512; i += 2) x.fillRect(i, 0, 1, 288);
+  });
+  const rb = draw(graph([media('s', stripes)]), provider({ s: stripes }));
+  const v = at(rb, 64, 36);
+  const exp = code(bt709Oetf(0.5));
+  nearRgb(v, [exp, exp, exp], 1.01, 'linear-light average');
+  let minV = 255;
+  let maxV = 0;
+  for (let x = 4; x < 124; x++) {
+    minV = Math.min(minV, at(rb, x, 36)[0]);
+    maxV = Math.max(maxV, at(rb, x, 36)[0]);
+  }
+  check(maxV - minV <= 1, `downscaled stripes alias: ${minV}..${maxV}`);
+  // 8×8 checker scaled up 8×: bicubic gives a smooth ramp across cell edges (many distinct levels)
+  const chk = canvas(16, 9, (x) => {
+    for (let j = 0; j < 9; j++)
+      for (let i = 0; i < 16; i++) {
+        x.fillStyle = (i + j) % 2 ? '#fff' : '#000';
+        x.fillRect(i, j, 1, 1);
+      }
+  });
+  const up = draw(graph([media('c', chk)]), provider({ c: chk }));
+  const levels = new Set<number>();
+  for (let x = 0; x < 16; x++) levels.add(at(up, 32 + x, 36)[0]);
+  check(levels.size >= 6, `upscale levels ${levels.size}`);
+  return `stripes → ${v[0]} (linear-light expected ${exp.toFixed(1)}, gamma-space would be 128), aliasing range ${maxV - minV}; upscale distinct levels across 2 cells: ${levels.size}`;
+});
+
+test('rotated rounded-rect mask and expansion', () => {
+  const white = solid(W, H, [255, 255, 255]);
+  const m: Mask = { ...makeMask('rect'), x: 0.5, y: 0.5, width: 0.4, height: 0.4, rotation: 45, roundness: 0, feather: 0 };
+  const rb = draw(graph([media('a', white, { masks: [m] })]), provider({ a: white }));
+  nearRgb(at(rb, 64, 36), [255, 255, 255], 0, 'center');
+  // the unrotated rect corner region is outside a 45° diamond
+  nearRgb(at(rb, 64 + 24, 36 - 13), [0, 0, 0], 0, 'rotated corner cut');
+  // (dx 10, dy 20) is outside the unrotated 51×29 rect but inside it after a 45° clockwise turn
+  nearRgb(at(rb, 64 + 10, 36 + 20), [255, 255, 255], 0, 'rotated (clockwise) body');
+  nearRgb(at(rb, 64 + 10, 36 - 20), [0, 0, 0], 0, 'counter-clockwise side is outside');
+  const round: Mask = { ...m, rotation: 0, roundness: 0.5 };
+  const rr = draw(graph([media('a', white, { masks: [round] })]), provider({ a: white }));
+  nearRgb(at(rr, 64 + 24, 36 - 13), [0, 0, 0], 0, 'rounded corner');
+  nearRgb(at(rr, 64 + 24, 36), [255, 255, 255], 0, 'rounded edge mid');
+  const grown = draw(graph([media('a', white, { masks: [{ ...m, rotation: 0, expansion: 8 }] })]), provider({ a: white }));
+  nearRgb(at(grown, 64 + 30, 36), [255, 255, 255], 0, 'expanded');
+});
+
+test('letterboxing: a 16:9 sequence in a square canvas keeps its aspect', () => {
+  const c = solid(W, H, [255, 255, 255]);
+  const rb = draw(graph([media('a', c)]), provider({ a: c }), {}, [100, 100]);
+  check(rb.width === 100 && rb.height === 56, `frame readback ${rb.width}x${rb.height}`);
+  nearRgb(at(rb, 50, 28), [255, 255, 255], 0, 'frame');
+  return `frame region ${rb.width}x${rb.height}`;
+});
+
+test('Display P3 sequences tag the canvas', () => {
+  const c = solid(W, H, [200, 50, 50]);
+  draw(graph([media('a', c)], { colorSpace: 'p3' }), provider({ a: c }));
+  const gl = mainCanvas.getContext('webgl2') as WebGL2RenderingContext & { drawingBufferColorSpace?: string };
+  const space = gl.drawingBufferColorSpace;
+  check(space === undefined || space === 'display-p3', `drawingBufferColorSpace ${space}`);
+  draw(graph([media('a', c)]), provider({ a: c }));
+  check(space === undefined || gl.drawingBufferColorSpace === 'srgb', 'back to srgb');
+  return `drawingBufferColorSpace=${space ?? 'unsupported'}`;
+});
+
+test('animated text re-rasterizes only inside its animation window', () => {
+  const text = { ...defaultTextProps('Fade'), animation: { in: 'fade' as const, out: 'none' as const, inDuration: 0.5, outDuration: 0.5 } };
+  const at0 = (t: number) => layer('anim', { kind: 'text', text, local: t, duration: 5, width: W, height: H });
+  const before = R.stats.rasterizations;
+  for (const t of [0.1, 0.2, 0.3]) draw(graph([at0(t)]), provider({}));
+  const during = R.stats.rasterizations - before;
+  for (const t of [1, 2, 3]) draw(graph([at0(t)]), provider({}));
+  const after = R.stats.rasterizations - before - during;
+  check(during === 3 && after === 1, `during ${during}, after ${after}`);
+  return `in-animation rasterizations ${during}, settled ${after}`;
+});
+
+test('transition with an adjustment layer side dissolves the adjustment', () => {
+  const grey = [100, 100, 100];
+  const src = solid(W, H, grey);
+  const adj = layer('adj2', null, { adjustment: true, inputTransform: 'linear', grade: grade({ exposure: 1 }) });
+  const node: TransitionNode = { type: 'transition', transition: 'crossDissolve', params: {}, progress: 0.5, from: adj, to: null, trackId: 't2' };
+  const got = at(draw(graph([media('a', src), node]), provider({ a: src })), 64, 36);
+  nearRgb(got, expectOut('rec709', lin709(grey).map((v) => v * 1.5) as Vec3), 1.01, 'half-dissolved adjustment');
+  return `${got.slice(0, 3)}`;
+});
+
 test('performance: 1920×1080 frame, 4 layers (media + text + masked solid + graded adjustment)', () => {
   const big = canvas(1920, 1080, (x) => {
     const gr = x.createLinearGradient(0, 0, 1920, 0);

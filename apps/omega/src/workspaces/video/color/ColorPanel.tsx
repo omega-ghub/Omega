@@ -17,6 +17,7 @@ import {
   setCompare,
   setInputTransformForSource,
   toggleBypass,
+  toggleMatte,
 } from './colorActions';
 import { kbd, Select, Slider, SliderRow, ToolButton } from './controls';
 import { CurveEditor } from './CurveEditor';
@@ -182,6 +183,14 @@ function ClipGrade({ clip, tab, setTab }: { clip: Clip; tab: Tab; setTab: (t: Ta
             Grade bypassed.{' '}
             <button type="button" className="cl-link" onClick={toggleBypass}>
               Enable
+            </button>
+          </div>
+        )}
+        {viewer.showMatte && tab !== 'hsl' && (
+          <div className="cl-banner" data-testid="cl-matte-banner">
+            The viewer shows the qualifier matte.{' '}
+            <button type="button" className="cl-link" onClick={toggleMatte}>
+              Show image
             </button>
           </div>
         )}

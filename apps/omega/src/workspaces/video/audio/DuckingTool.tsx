@@ -8,19 +8,21 @@ import { useEditor, useSequence } from '../../../state/store';
 import { activeSequence } from '../../../state/types';
 import { ScrubNumber, Slider } from '../inspector/controls';
 
-function guessRoles(names: { id: string; name: string }[]): { dialogue: string[]; music: string[] } {
-  const isMusic = (n: string) => /music|score|song|bed|mx/i.test(n);
-  const music = names.filter((t) => isMusic(t.name)).map((t) => t.id);
-  const dialogue = names.filter((t) => !isMusic(t.name)).map((t) => t.id);
-  // Without names to go on: first track is dialogue, last is music.
-  if (!music.length && names.length >= 2) return { dialogue: [names[0].id], music: [names[names.length - 1].id] };
-  return { dialogue, music };
+/** First guess at roles: tracks named like music are music; otherwise the first track with clips is dialogue and the last is music. */
+function guessRoles(tracks: { id: string; name: string; clips: number }[]): { dialogue: string[]; music: string[] } {
+  const isMusic = (n: string) => /music|score|song|bed|\bmx\b/i.test(n);
+  const used = tracks.filter((t) => t.clips > 0);
+  const named = used.filter((t) => isMusic(t.name)).map((t) => t.id);
+  if (named.length) return { music: named, dialogue: used.filter((t) => !named.includes(t.id)).map((t) => t.id) };
+  if (used.length >= 2) return { dialogue: [used[0].id], music: [used[used.length - 1].id] };
+  if (tracks.length >= 2) return { dialogue: [tracks[0].id], music: [tracks[1].id] };
+  return { dialogue: [], music: [] };
 }
 
 export function DuckingTool({ onDone }: { onDone?: () => void }) {
   const seq = useSequence();
   const tracks = seq.tracks.filter((t) => t.kind === 'audio');
-  const guess = useMemo(() => guessRoles(tracks.map((t) => ({ id: t.id, name: t.name }))), [tracks]);
+  const guess = useMemo(() => guessRoles(tracks.map((t) => ({ id: t.id, name: t.name, clips: t.clips.length }))), [tracks]);
   const [dialogue, setDialogue] = useState<string[]>(guess.dialogue);
   const [music, setMusic] = useState<string[]>(guess.music);
   const [reduction, setReduction] = useState(12);
@@ -53,7 +55,9 @@ export function DuckingTool({ onDone }: { onDone?: () => void }) {
         release,
       });
       if (!results.length) {
-        setMessage('No dialogue above the threshold under any music clip.');
+        const seq = activeSequence(s.project);
+        const musicClips = seq.tracks.filter((t) => music.includes(t.id)).reduce((n, t) => n + t.clips.length, 0);
+        setMessage(musicClips ? 'No dialogue above the threshold under the music clips.' : 'The music tracks have no clips.');
         return;
       }
       useEditor.getState().mutateSequence(`Auto-duck ${results.length} music clip${results.length === 1 ? '' : 's'}`, (draft) => {

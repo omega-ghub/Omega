@@ -3,14 +3,16 @@
 
 import { create } from 'zustand';
 import type { LoudnessResult } from '../../../engine/audio/engine';
-import type { Project } from '../../../state/types';
+import type { Project, Sequence } from '../../../state/types';
 
 export type RecordPhase = 'idle' | 'countdown' | 'recording' | 'saving';
 
 export interface LoudnessAnalysis {
   result: LoudnessResult;
-  /** Document the analysis was made from (stale when it changes). */
-  project: Project;
+  /** What the analysis was made from (stale when the sequence or the media changes; saves don't count). */
+  sequence: Sequence;
+  assets: Project['assets'];
+  sequences: Project['sequences'];
   sequenceId: string;
   start: number;
   end: number;

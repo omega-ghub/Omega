@@ -1134,12 +1134,14 @@ export class TimelineController implements TimelineHandle {
     const fr = 1 / exactRate(seq.fps);
     const span = sourceSpan(clip);
     let delta = 0;
+    let requested = 0;
     const d: Drag = {
       ...baseDrag('Slip', false),
       cursor: CURSORS.slip,
       move: (p) => {
         const dt = Math.round((p.t - p0.t) / fr) * fr;
         let sd = -dt * clip.speed * (clip.reverse ? -1 : 1);
+        requested = sd;
         if (asset && asset.kind !== 'image') sd = Math.max(-clip.inPoint, Math.min(asset.duration - (clip.inPoint + span), sd));
         else if (clip.kind === 'sequence') sd = Math.max(-clip.inPoint, sd);
         delta = sd;
@@ -1150,12 +1152,15 @@ export class TimelineController implements TimelineHandle {
         d.readoutFn = (ok) => {
           const a = ok && applied !== null ? applied : sd;
           const inT = clip.inPoint + a;
-          return [`In ${formatTimecode(inT, seq.fps, seq.dropFrame)}`, `Out ${formatTimecode(inT + span, seq.fps, seq.dropFrame)}`, `${formatDelta(a, seq.fps)}`];
+          const lines = [`In ${formatTimecode(inT, seq.fps, seq.dropFrame)}`, `Out ${formatTimecode(inT + span, seq.fps, seq.dropFrame)}`, `${formatDelta(a, seq.fps)}`];
+          if (Math.abs(requested) > 1e-9 && (Math.abs(sd) < 1e-9 || (ok && applied === 0))) lines.push('Blocked: no more media on that side');
+          return lines;
         };
       },
       up: () => {
-        if (!d.moved || !d.recipe || Math.abs(delta) < 1e-9) return;
-        cmd.editProject('Slip', d.recipe);
+        if (!d.moved || !d.recipe || Math.abs(requested) < 1e-9) return;
+        const before = S().project;
+        if (Math.abs(delta) < 1e-9 || (cmd.editProject('Slip', d.recipe) && S().project === before)) cmd.toast('Can’t slip: the clip uses all of its media on that side');
       },
     };
     return d;
@@ -1204,7 +1209,8 @@ export class TimelineController implements TimelineHandle {
       },
       up: () => {
         if (!d.moved || !d.recipe || Math.abs(delta) < 1e-9) return;
-        cmd.editProject('Slide', d.recipe);
+        const before = S().project;
+        if (cmd.editProject('Slide', d.recipe) && S().project === before) cmd.toast('Can’t slide: the neighbouring clips have no more media');
       },
     };
     return d;

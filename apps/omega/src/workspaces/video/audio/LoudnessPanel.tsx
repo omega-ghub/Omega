@@ -63,7 +63,7 @@ export async function runLoudnessAnalysis(range: 'sequence' | 'inout'): Promise<
       progress = 0.8 + f * 0.2;
       notify();
     }, ctl.signal);
-    useAudioUi.getState().set({ analysis: { result, project, sequenceId: seq.id, start, end, range, at: Date.now() } });
+    useAudioUi.getState().set({ analysis: { result, sequence: seq, assets: project.assets, sequences: project.sequences, sequenceId: seq.id, start, end, range, at: Date.now() } });
     return result;
   } catch (err) {
     if ((err as DOMException)?.name !== 'AbortError') s.showToast(`Loudness analysis failed: ${(err as Error).message}`, 'error');
@@ -180,7 +180,8 @@ function LoudnessBody({ autoStart }: { autoStart: boolean }) {
   }, [autoStart, hasInOut]);
 
   const r = analysis && analysis.sequenceId === seq.id ? analysis.result : null;
-  const stale = !!analysis && analysis.project !== project;
+  // Nested sequences can change the mix too, so compare the whole sequence list (autosave keeps these identical).
+  const stale = !!analysis && !!project && (analysis.sequences !== project.sequences || analysis.assets !== project.assets);
   const v = r ? verdict(r, preset) : null;
 
   const setMasterForTarget = () => {

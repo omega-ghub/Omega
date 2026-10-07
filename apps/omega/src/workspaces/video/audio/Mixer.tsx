@@ -45,7 +45,7 @@ function PeakReadout({ source, testId }: { source: 'master' | { trackId: string 
         onPeak={(db, clip) => setState((s) => (Math.abs((s.db === -Infinity ? -999 : s.db) - (db === -Infinity ? -999 : db)) > 0.05 || s.clip !== clip ? { db, clip } : s))}
       />
       <span className={`au-strip__peak ${state.clip ? 'au-strip__peak--clip' : ''}`} data-testid={`${testId}-peak`} title="Peak hold (dBFS)">
-        {Number.isFinite(state.db) && state.db > -70 ? state.db.toFixed(1) : '−∞'}
+        {Number.isFinite(state.db) && state.db > -70 ? formatDb(state.db).replace('+', '') : '−∞'}
       </span>
     </div>
   );

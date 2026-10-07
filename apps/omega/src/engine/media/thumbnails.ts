@@ -10,7 +10,7 @@
 // Images produce a single thumbnail. The cache owns the bitmaps: draw them,
 // never close them.
 
-import { CanvasSink, type Input, type UrlSource } from 'mediabunny';
+import { CanvasSink, InputDisposedError, type Input, type UrlSource } from 'mediabunny';
 import type { MediaAsset } from '../../state/types';
 import { LruCache } from './lru';
 import { fitWithin, slotTime, thumbSlot, thumbnailStep } from './mediaMath';
@@ -52,6 +52,8 @@ interface SinkEntry {
   sink: CanvasSink;
   firstTs: number;
   used: number;
+  /** Replaced while a batch was using it: dispose when that batch ends. */
+  retired?: boolean;
 }
 
 const infos = new Map<string, AssetInfo>();
@@ -196,6 +198,8 @@ function pump() {
     running++;
     void runBatch(info, batch)
       .catch((err) => {
+        // a sink retired mid-batch (proxy swap, relink) is not a broken file
+        if (err instanceof InputDisposedError || infos.get(assetId) !== info) return;
         console.warn('[media] thumbnails failed for', info.origPath, err);
         info.failedPath = info.decodePath;
         for (const [k, j] of [...queue.entries()]) if (j.assetId === assetId) queue.delete(k);
@@ -229,14 +233,18 @@ async function runBatch(info: AssetInfo, jobs: Job[]) {
   const entry = await sinkFor(info);
   const times = jobs.map((j) => Math.max(j.time, entry.firstTs));
   let i = 0;
-  for await (const wc of entry.sink.canvasesAtTimestamps(times)) {
-    const job = jobs[i++];
-    if (!wc || !job) continue;
-    if (infos.get(info.id) !== info) return; // invalidated meanwhile
-    const bmp = await createImageBitmap(wc.canvas);
-    store(info, job.slot, bmp);
+  try {
+    for await (const wc of entry.sink.canvasesAtTimestamps(times)) {
+      const job = jobs[i++];
+      if (!wc || !job) continue;
+      if (infos.get(info.id) !== info || entry.retired) return; // invalidated meanwhile
+      const bmp = await createImageBitmap(wc.canvas);
+      store(info, job.slot, bmp);
+    }
+    entry.used = performance.now();
+  } finally {
+    if (entry.retired) entry.input.dispose();
   }
-  entry.used = performance.now();
 }
 
 function store(info: AssetInfo, slot: number, bmp: ImageBitmap) {
@@ -280,10 +288,9 @@ function closeSink(assetId: string) {
   const e = sinks.get(assetId);
   if (!e) return;
   sinks.delete(assetId);
-  if (busy.has(assetId)) {
-    // let the running batch finish with it; dispose shortly after
-    setTimeout(() => e.input.dispose(), 2000);
-  } else e.input.dispose();
+  // a running batch disposes it when it ends
+  if (busy.has(assetId)) e.retired = true;
+  else e.input.dispose();
 }
 
 function notify(assetId: string) {
