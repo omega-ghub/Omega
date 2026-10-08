@@ -16,6 +16,7 @@ import { ClipSection } from './sections/ClipSection';
 import { GradientSection, ShapeSection, SolidSection } from './sections/GeneratorSections';
 import { ColorQuickSection, MultiInspector, SequenceSummary } from './sections/SummarySections';
 import { TextAnimationSection, TextAppearanceSection, TextSection } from './sections/TextSections';
+import { MotionSection } from './sections/MotionSection';
 import { TimeSection } from './sections/TimeSection';
 import { CropSection, FadesSection, FormatSection, MasksSection, TransformSection } from './sections/TransformSections';
 import { TransitionsSection } from './sections/TransitionsSection';
@@ -76,6 +77,7 @@ function SingleClip({ clip, track, audio }: { clip: Clip; track: Track; audio: {
         {isVideo && clip.kind === 'solid' && clip.solid && <SolidSection clip={clip} />}
         {isVideo && clip.kind === 'gradient' && clip.gradient && <GradientSection clip={clip} />}
         {visual && <TransformSection clip={clip} />}
+        {visual && <MotionSection clip={clip} />}
         {visual && <FormatSection clip={clip} />}
         {visual && <CropSection clip={clip} />}
         {isVideo && <MasksSection clip={clip} />}

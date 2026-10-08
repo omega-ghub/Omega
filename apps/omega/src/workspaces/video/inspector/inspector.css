@@ -889,3 +889,25 @@
 .ins-title-card:active .ins-title-card__canvas {
   transform: scale(0.99);
 }
+
+/* Motion modifiers */
+.ins-mod {
+  margin: 8px 0;
+  padding: 6px 0 4px;
+  border-top: 1px solid var(--border);
+}
+.ins-mod__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.ins-mod__title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 12px;
+}
+.ins-dim {
+  font-weight: 400;
+  opacity: 0.6;
+}

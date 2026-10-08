@@ -21,6 +21,7 @@ import { createPortal } from 'react-dom';
 import { useEditor, useSequence } from '../../../state/store';
 import type { Clip, Ease, Keyframe, KeyframeMap } from '../../../state/types';
 import { applyEase, KEY_TOLERANCE } from '../../../engine/keyframes';
+import { isPhysicalEase } from '../../../engine/motion';
 import { transport } from '../../../engine/playback/transport';
 import { isMac } from '../actions';
 import { editClip, IconButton, ScrubNumber, Segmented } from './controls';
@@ -394,7 +395,7 @@ function curvePath(keys: Keyframe[], x: (t: number) => number, y: (v: number) =>
     const n = a.ease === 'linear' ? 1 : Math.max(8, Math.min(64, Math.round((x(b.t) - x(a.t)) / 3)));
     for (let j = 1; j <= n; j++) {
       const p = j / n;
-      const v = a.v + (b.v - a.v) * applyEase(a.ease, p, a.bez as Bez | undefined);
+      const v = a.v + (b.v - a.v) * applyEase(a.ease, p, a.bez as Bez | undefined, a.ezp);
       parts.push(`L${x(a.t + (b.t - a.t) * p).toFixed(2)},${y(v).toFixed(2)}`);
     }
   }
@@ -431,6 +432,8 @@ function GraphView({
     const a = keys[i];
     const b = keys[i + 1];
     if (a.ease === 'bezier') for (let j = 1; j < 16; j++) samples.push(a.v + (b.v - a.v) * applyEase('bezier', j / 16, a.bez as Bez | undefined));
+    // Physical eases overshoot the end value, so the graph's value range must include the peaks.
+    else if (isPhysicalEase(a.ease)) for (let j = 1; j < 64; j++) samples.push(a.v + (b.v - a.v) * applyEase(a.ease, j / 64, undefined, a.ezp));
   }
   const live = valueRange(keys, samples);
   const range = frozen.current ?? live;
@@ -625,6 +628,10 @@ const EASE_ITEMS: { ease: Ease; label: string; key?: string }[] = [
   { ease: 'easeIn', label: 'Ease in', key: isMac ? '⇧F9' : 'Shift+F9' },
   { ease: 'easeOut', label: 'Ease out', key: isMac ? '⌘⇧F9' : 'Ctrl+Shift+F9' },
   { ease: 'easeInOut', label: 'Ease in-out', key: 'F9' },
+  { ease: 'back', label: 'Overshoot' },
+  { ease: 'elastic', label: 'Elastic' },
+  { ease: 'bounce', label: 'Bounce' },
+  { ease: 'spring', label: 'Spring' },
 ];
 
 function EaseMenu({ x, y, keys, current, onClose, onCustom }: { x: number; y: number; keys: KeyRef[]; current: Ease | null; onClose: () => void; onCustom: () => void }) {

@@ -2,7 +2,7 @@
 // registered actions: selection, ease, delete, copy/paste, add, navigate.
 
 import { useEditor } from '../../../state/store';
-import type { Ease } from '../../../state/types';
+import type { Ease, EaseParams } from '../../../state/types';
 import { KEY_TOLERANCE, paramAt, setKeyframe } from '../../../engine/keyframes';
 import { getClip, editClip, localTime } from './model';
 import { copyKeys, deleteKeys, pasteKeys, setKeysEase, writeKeysDraft, type Bez, type KeyClipboardEntry } from './keyframeOps';
@@ -46,16 +46,27 @@ function byPath(keys: { path: string; t: number }[]): Map<string, number[]> {
   return m;
 }
 
-const EASE_LABEL: Record<Ease, string> = { linear: 'Linear', hold: 'Hold', easeIn: 'Ease in', easeOut: 'Ease out', easeInOut: 'Ease in-out', bezier: 'Custom ease' };
+const EASE_LABEL: Record<Ease, string> = {
+  linear: 'Linear',
+  hold: 'Hold',
+  easeIn: 'Ease in',
+  easeOut: 'Ease out',
+  easeInOut: 'Ease in-out',
+  bezier: 'Custom ease',
+  back: 'Overshoot',
+  elastic: 'Elastic',
+  bounce: 'Bounce',
+  spring: 'Spring',
+};
 
-export function setEase(ease: Ease, bez?: Bez, target = targetKeys(), opts?: { coalesceKey?: string }): boolean {
+export function setEase(ease: Ease, bez?: Bez, target = targetKeys(), opts?: { coalesceKey?: string; ezp?: EaseParams }): boolean {
   if (!target || !target.keys.length) return false;
   const groups = byPath(target.keys);
   editClip(
     target.clipId,
     `Keyframe interpolation: ${EASE_LABEL[ease]}`,
     (c) => {
-      for (const [path, times] of groups) if (c.keyframes[path]) c.keyframes[path] = setKeysEase(c.keyframes[path], times, ease, bez);
+      for (const [path, times] of groups) if (c.keyframes[path]) c.keyframes[path] = setKeysEase(c.keyframes[path], times, ease, bez, opts?.ezp);
     },
     opts,
   );

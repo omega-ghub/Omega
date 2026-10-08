@@ -2,6 +2,7 @@
 // parsing, numeric param ranges, effect copy/paste with keyframe remapping,
 // and list reordering. Unit-tested in logic.test.ts.
 import type { ParamDef } from '../../../engine/effects/types';
+import { dropModifiers } from '../../../engine/motion';
 import type { Clip, EffectInstance, Keyframe } from '../../../state/types';
 
 // ---------------------------------------------------------------------------
@@ -194,6 +195,7 @@ export function removeEffect(clip: Clip, id: string): void {
   clip.effects = clip.effects.filter((e) => e.id !== id);
   const prefix = `effects.${id}.`;
   for (const path of Object.keys(clip.keyframes)) if (path.startsWith(prefix)) delete clip.keyframes[path];
+  dropModifiers(clip, prefix);
 }
 
 /** Resets an effect's params to defaults and drops its keyframes. */
@@ -203,6 +205,7 @@ export function resetEffect(clip: Clip, id: string, params: readonly ParamDef[])
   fx.params = defaultsOf(params);
   const prefix = `effects.${id}.`;
   for (const path of Object.keys(clip.keyframes)) if (path.startsWith(prefix)) delete clip.keyframes[path];
+  dropModifiers(clip, prefix);
 }
 
 /** Moves an item from one index to another (returns a new array). `to` is the final index. */

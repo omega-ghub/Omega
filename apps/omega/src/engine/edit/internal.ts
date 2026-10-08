@@ -12,6 +12,7 @@ import type { CaptionCue, Clip, Keyframe, MediaAsset, Project, Sequence, Track, 
 import { newId, sequenceDuration } from '../../state/types';
 import { makeTrack } from '../../state/defaults';
 import { evaluate } from '../keyframes';
+import { scaleModifiers, shiftModifiers } from '../motion';
 import { exactRate, fromFrames, toFrames } from '../time';
 
 // ---------------------------------------------------------------------------
@@ -84,6 +85,7 @@ export function shiftTime(g: Grid, t: number, dF: number): number {
 export function shiftKfs(g: Grid, c: Clip, dF: number): void {
   if (!dF) return;
   for (const list of Object.values(c.keyframes)) for (const k of list) k.t = shiftTime(g, k.t, dF);
+  shiftModifiers(c, g.T(dF));
 }
 
 /** Scales keyframe times by `r` (rate stretch / speed change); speed ramp values scale by 1/r so the source span is unchanged. */
@@ -95,6 +97,7 @@ export function scaleKfs(c: Clip, r: number): void {
       if (path === 'time.speed') k.v /= r;
     }
   }
+  scaleModifiers(c, r);
 }
 
 // ---------------------------------------------------------------------------

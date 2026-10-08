@@ -85,6 +85,7 @@ function clipMeta(clip: Clip): Json {
     fadeIn,
     fadeOut,
     keyframes,
+    modifiers,
     text,
     shape,
     solid,
@@ -126,7 +127,7 @@ function clipMeta(clip: Clip): Json {
       groupId: groupId ?? null,
       notes: notes ?? '',
       summary,
-      clip: { transform, crop, masks, blend, effects, grade, audio, fadeIn, fadeOut, keyframes, text, shape, solid, gradient, transitionIn, transitionOut },
+      clip: { transform, crop, masks, blend, effects, grade, audio, fadeIn, fadeOut, keyframes, modifiers, text, shape, solid, gradient, transitionIn, transitionOut },
     }),
   ) as Json;
 }

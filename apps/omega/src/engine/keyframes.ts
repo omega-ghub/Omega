@@ -14,13 +14,14 @@
 // The static value lives at that path in the clip; keyframes (clip.keyframes[path])
 // override it when present. Keyframe times are seconds from the clip start.
 
-import type { Clip, Ease, Keyframe } from '../state/types';
+import type { Clip, Ease, EaseParams, Keyframe } from '../state/types';
+import { isPhysicalEase, loopMap, modifiersAllowed, physicalEase, shiftModifiers, wiggleOffset } from './motion';
 
 // ---------------------------------------------------------------------------
 // Easing
 // ---------------------------------------------------------------------------
 
-const BEZ: Record<Exclude<Ease, 'linear' | 'hold' | 'bezier'>, [number, number, number, number]> = {
+const BEZ: Record<'easeIn' | 'easeOut' | 'easeInOut', [number, number, number, number]> = {
   easeIn: [0.42, 0, 1, 1],
   easeOut: [0, 0, 0.58, 1],
   easeInOut: [0.42, 0, 0.58, 1],
@@ -61,9 +62,10 @@ export function cubicBezier(x: number, x1: number, y1: number, x2: number, y2: n
   return sampleY(t);
 }
 
-export function applyEase(ease: Ease, p: number, bez?: [number, number, number, number]): number {
+export function applyEase(ease: Ease, p: number, bez?: [number, number, number, number], ezp?: EaseParams): number {
   if (ease === 'hold') return 0;
   if (ease === 'linear') return p;
+  if (isPhysicalEase(ease)) return physicalEase(ease, p, ezp);
   const c = ease === 'bezier' ? (bez ?? [0.25, 0.1, 0.25, 1]) : BEZ[ease];
   return cubicBezier(p, c[0], c[1], c[2], c[3]);
 }
@@ -86,7 +88,7 @@ export function evaluate(kfs: Keyframe[], t: number): number {
   const b = kfs[hi];
   const span = b.t - a.t;
   if (span <= 0) return b.v;
-  const p = applyEase(a.ease, (t - a.t) / span, a.bez);
+  const p = applyEase(a.ease, (t - a.t) / span, a.bez, a.ezp);
   return a.v + (b.v - a.v) * p;
 }
 
@@ -134,12 +136,47 @@ export function setStatic(clip: Clip, path: string, value: unknown): void {
   obj[parts[parts.length - 1]] = value;
 }
 
-/** Numeric value of a param at clip-local time (keyframes win over the static value). */
-export function paramAt(clip: Clip, path: string, local: number): number {
-  const kfs = clip.keyframes[path];
-  if (kfs && kfs.length) return evaluate(kfs, local);
+function staticNumber(clip: Clip, path: string): number {
   const v = getStatic(clip, path);
   return typeof v === 'number' ? v : typeof v === 'boolean' ? (v ? 1 : 0) : 0;
+}
+
+/** How deep a chain of 'follow' modifiers may go before it stops (guards against cycles). */
+const MAX_FOLLOW_DEPTH = 4;
+
+/**
+ * Numeric value of a param at clip-local time (keyframes win over the static
+ * value). Modifiers (clip.modifiers[path]) layer procedural motion on top, in a
+ * fixed order: loop → keyframes → follow → wiggle. Params without modifiers
+ * take the fast path.
+ */
+export function paramAt(clip: Clip, path: string, local: number, depth = 0): number {
+  const kfs = clip.keyframes[path];
+  const mods = clip.modifiers?.[path];
+  if (mods === undefined || mods.length === 0 || !modifiersAllowed(path)) {
+    return kfs && kfs.length ? evaluate(kfs, local) : staticNumber(clip, path);
+  }
+  let t = local;
+  let add = 0;
+  const loop = mods.find((m) => m.enabled && m.type === 'loop');
+  if (loop && loop.type === 'loop' && kfs && kfs.length >= 2) {
+    const r = loopMap(kfs, local, loop.mode);
+    t = r.t;
+    add = r.add;
+  }
+  let v = (kfs && kfs.length ? evaluate(kfs, t) : staticNumber(clip, path)) + add;
+  for (const m of mods) {
+    if (!m.enabled) continue;
+    if (m.type === 'follow') {
+      if (depth < MAX_FOLLOW_DEPTH && m.source !== path) v += m.scale * paramAt(clip, m.source, local - m.delay, depth + 1) + m.offset;
+    } else if (m.type === 'wiggle') v += wiggleOffset(m, local);
+  }
+  return v;
+}
+
+/** True when the param has at least one enabled modifier. */
+export function hasModifiers(clip: Clip, path: string): boolean {
+  return !!clip.modifiers?.[path]?.some((m) => m.enabled);
 }
 
 export function isAnimated(clip: Clip, path: string): boolean {
@@ -198,4 +235,5 @@ export function allKeyTimes(clip: Clip): number[] {
 /** Shift all keyframes (used by trims at the clip head so animation stays put on the timeline). */
 export function shiftKeyframes(clip: Clip, delta: number): void {
   for (const list of Object.values(clip.keyframes)) for (const k of list) k.t += delta;
+  shiftModifiers(clip, delta);
 }

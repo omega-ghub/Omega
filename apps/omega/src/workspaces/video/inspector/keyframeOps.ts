@@ -3,7 +3,7 @@
 // their inputs (except the *Draft helpers, which run on immer drafts).
 
 import { evaluate, KEY_TOLERANCE, setStatic } from '../../../engine/keyframes';
-import type { Clip, Ease, Keyframe } from '../../../state/types';
+import type { Clip, Ease, EaseParams, Keyframe } from '../../../state/types';
 
 export type Bez = [number, number, number, number];
 
@@ -21,7 +21,11 @@ export function easeControlPoints(ease: Ease, bez?: Bez): Bez | null {
     case 'bezier':
       return bez ?? [0.25, 0.1, 0.25, 1];
     case 'hold':
-      return null;
+    case 'back':
+    case 'elastic':
+    case 'bounce':
+    case 'spring':
+      return null; // no bezier handles: the curve comes from physics (engine/motion.ts)
   }
 }
 
@@ -49,12 +53,14 @@ export function deleteKeys(list: Keyframe[], times: number[]): Keyframe[] {
 }
 
 /** Sets the ease (outgoing interpolation) of keys at the given times. */
-export function setKeysEase(list: Keyframe[], times: number[], ease: Ease, bez?: Bez): Keyframe[] {
+export function setKeysEase(list: Keyframe[], times: number[], ease: Ease, bez?: Bez, ezp?: EaseParams): Keyframe[] {
   return list.map((k) => {
     if (!times.some((t) => near(t, k.t))) return k;
     const next: Keyframe = { ...k, ease };
     if (ease === 'bezier') next.bez = bez ?? (k.bez as Bez | undefined) ?? [0.25, 0.1, 0.25, 1];
     else delete next.bez;
+    if (ezp && Object.keys(ezp).length) next.ezp = { ...ezp };
+    else delete next.ezp;
     return next;
   });
 }

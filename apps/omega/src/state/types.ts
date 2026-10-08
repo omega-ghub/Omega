@@ -155,7 +155,30 @@ export interface LutRef {
 // Keyframes
 // ---------------------------------------------------------------------------
 
-export type Ease = 'linear' | 'hold' | 'easeIn' | 'easeOut' | 'easeInOut' | 'bezier';
+export type Ease =
+  | 'linear'
+  | 'hold'
+  | 'easeIn'
+  | 'easeOut'
+  | 'easeInOut'
+  | 'bezier'
+  // Physical eases (engine/motion.ts). They may overshoot the end value mid-segment.
+  | 'back' // overshoot then settle
+  | 'elastic' // wobble like a rubber band
+  | 'bounce' // hit the end value and rebound
+  | 'spring'; // damped spring, settles exactly on the end value
+
+/** Tuning for the physical eases. Every field is optional; defaults live in engine/motion.ts. */
+export interface EaseParams {
+  /** Where the motion eases: 'out' (default) = fast start, physical finish. */
+  dir?: 'in' | 'out' | 'inOut';
+  /** 'back': how far past the end value it travels (default 1.70158 ≈ 10%). */
+  overshoot?: number;
+  /** 'elastic': wobble period (default 0.3; smaller = faster wobble). */
+  period?: number;
+  /** 'spring': 0 = critically damped (no overshoot) … 1 = very bouncy (default 0.5). */
+  bounce?: number;
+}
 
 export interface Keyframe {
   /** Seconds from the clip's start (timeline time − clip.start). */
@@ -165,7 +188,58 @@ export interface Keyframe {
   ease: Ease;
   /** Cubic-bezier control points (x1,y1,x2,y2) when ease === 'bezier'. */
   bez?: [number, number, number, number];
+  /** Tuning for 'back' | 'elastic' | 'bounce' | 'spring'. */
+  ezp?: EaseParams;
 }
+
+// ---------------------------------------------------------------------------
+// Param modifiers (procedural motion layered over keyframes; ADR-0005)
+// ---------------------------------------------------------------------------
+
+interface ModifierBase {
+  id: string;
+  enabled: boolean;
+}
+
+/** Adds smooth, deterministic noise to a param (camera shake, hand-held float, flicker). */
+export interface WiggleModifier extends ModifierBase {
+  type: 'wiggle';
+  /** Noise rate in cycles per second. */
+  freq: number;
+  /** Peak swing in the param's own units. */
+  amp: number;
+  /** Layers of finer noise (1..6). 1 = smooth drift, 3+ = organic detail. */
+  octaves: number;
+  /** Different seeds give different but repeatable motion. */
+  seed: number;
+  /** Clip-local time where the noise starts; head trims move it so motion stays put. */
+  origin: number;
+  /** Seconds to ease the wiggle in from nothing (0 = immediately). */
+  fadeIn: number;
+}
+
+/** Repeats the keyframed animation after its last keyframe. */
+export interface LoopModifier extends ModifierBase {
+  type: 'loop';
+  /** cycle: restart; pingpong: play backwards then forwards; offset: restart and keep climbing. */
+  mode: 'cycle' | 'pingpong' | 'offset';
+}
+
+/** Drives a param from another param of the same clip: value += scale × source(t − delay) + offset. */
+export interface FollowModifier extends ModifierBase {
+  type: 'follow';
+  /** Param path of the source (see engine/keyframes.ts). */
+  source: string;
+  scale: number;
+  offset: number;
+  /** Seconds the follower lags behind the source. */
+  delay: number;
+}
+
+export type Modifier = WiggleModifier | LoopModifier | FollowModifier;
+
+/** param path → modifiers applied in order: loop → keyframes → follow → wiggle. */
+export type ModifierMap = Record<string, Modifier[]>;
 
 /** param path → keyframes sorted by t. See engine/keyframes.ts for paths. */
 export type KeyframeMap = Record<string, Keyframe[]>;
@@ -394,6 +468,8 @@ export interface Clip {
   /** Transition at this clip's tail only when no clip follows (to nothing). */
   transitionOut: Transition | null;
   keyframes: KeyframeMap;
+  /** Procedural motion over params (wiggle, loop, follow). Absent = none. See ADR-0005. */
+  modifiers?: ModifierMap;
   text?: TextProps; // kind 'text'
   shape?: ShapeProps; // kind 'shape'
   solid?: { color: string }; // kind 'solid'

@@ -8,6 +8,7 @@
 // written by exportOtio (grades, effects, transforms, text, caption tracks)
 // is restored, so Omega → OTIO → Omega keeps the edit intact.
 
+import { sanitizeModifiers } from '../motion';
 import type { CaptionCue, CaptionStyle, Clip, LabelColor, MediaAsset, Project, Sequence, Track, TransitionType } from '../../state/types';
 import { newId } from '../../state/types';
 import { makeAsset, makeClip, makeMarker, makeSequence, makeTrack, makeTransition } from '../../state/defaults';
@@ -130,8 +131,13 @@ function restoreClip(clip: Clip, meta: Obj | undefined): void {
   if (!meta || typeof meta !== 'object') return;
   const saved = meta.clip;
   if (saved && typeof saved === 'object') {
-    for (const key of ['transform', 'crop', 'masks', 'blend', 'effects', 'grade', 'audio', 'fadeIn', 'fadeOut', 'keyframes', 'text', 'shape', 'solid', 'gradient'] as const) {
+    for (const key of ['transform', 'crop', 'masks', 'blend', 'effects', 'grade', 'audio', 'fadeIn', 'fadeOut', 'keyframes', 'modifiers', 'text', 'shape', 'solid', 'gradient'] as const) {
       if (saved[key] !== undefined && saved[key] !== null) (clip as unknown as Obj)[key] = saved[key];
+    }
+    if (clip.modifiers !== undefined) {
+      const clean = sanitizeModifiers(clip.modifiers);
+      if (clean) clip.modifiers = clean;
+      else delete clip.modifiers;
     }
   }
   if (typeof meta.label === 'string') clip.label = meta.label as LabelColor;
